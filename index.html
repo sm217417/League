@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WINNER">
+<title>WINNER PRO</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{font-size:15px;-webkit-tap-highlight-color:transparent;}
+body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:#f5f7fa;color:#1a2333;min-height:100vh;padding-bottom:68px;}
+:root{
+  --g:#00a854;--g2:#e8f5ee;
+  --red:#e53935;--red2:#fdecea;
+  --gold:#f5a623;--gold2:#fff8e1;
+  --bg:#f5f7fa;--white:#fff;
+  --border:#dde3ed;--muted:#6b7c93;
+  --d1:#f5a623;--d2:#00a854;--d3:#0288d1;
+}
+/* ボトムナビ */
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid var(--border);display:flex;height:58px;}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;color:var(--muted);font-size:9px;border:none;background:none;padding:4px 0;min-width:0;}
+.bnav-btn.active{color:var(--g);}
+.bnav-icon{font-size:17px;line-height:1;}
+/* ページ */
+.page{display:none;}
+.page.active{display:block;}
+/* ヘッダー */
+.phdr{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border);padding:11px 14px 9px;}
+.ptitle{font-size:17px;font-weight:700;}
+/* カード */
+.card{background:#fff;border:1px solid var(--border);border-radius:10px;margin:10px 12px;overflow:hidden;}
+.card-hdr{padding:11px 13px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.card-body{padding:12px 13px;}
+/* タブ */
+.tabs{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{flex-shrink:0;padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
+.tab.active{background:var(--g);color:#fff;border-color:var(--g);}
+/* フォーム */
+.field{margin-bottom:10px;}
+.field label{display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px;}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;outline:none;-webkit-appearance:none;}
+input:focus,select:focus,textarea:focus{border-color:var(--g);}
+textarea{resize:vertical;min-height:80px;line-height:1.7;}
+.row{display:flex;gap:8px;}
+.row input,.row select{flex:1;}
+/* ボタン */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:inherit;transition:all .12s;}
+.btn-g{background:var(--g);color:#fff;}
+.btn-g:active{background:#007a3d;}
+.btn-sub{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.btn-sub:active{background:var(--border);}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn-full{width:100%;}
+/* 順位表 */
+.stbl{width:100%;border-collapse:collapse;font-size:13px;}
+.stbl th{padding:8px 5px;text-align:center;font-size:11px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap;}
+.stbl th:nth-child(2){text-align:left;}
+.stbl td{padding:9px 5px;text-align:center;border-bottom:1px solid #f0f2f5;}
+.stbl td:nth-child(2){text-align:left;font-weight:700;}
+.stbl tr:last-child td{border-bottom:none;}
+.row-p{background:var(--g2);}
+.row-r{background:var(--red2);}
+.pts{font-size:15px;font-weight:700;color:var(--g);}
+.rn{font-weight:700;font-size:14px;}
+.r1{color:var(--gold)}.r2{color:#90a4ae}.r3{color:#ff8a65}
+/* プログレス */
+.prog{padding:8px 13px;}
+.prog-bar{height:4px;background:#eee;border-radius:2px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:2px;transition:width .4s;}
+.prog-txt{font-size:11px;color:var(--muted);text-align:right;margin-top:3px;}
+/* 試合 */
+.mcard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;padding:11px 13px;border-bottom:1px solid #f0f2f5;}
+.mcard:last-child{border-bottom:none;}
+.mteam{font-size:13px;font-weight:700;}
+.mteam.home{text-align:right;}
+.mcenter{display:flex;flex-direction:column;align-items:center;gap:5px;}
+.srow{display:flex;align-items:center;gap:5px;}
+.sinp{width:42px;height:38px;text-align:center;font-size:19px;font-weight:700;border:1px solid var(--border);border-radius:7px;background:var(--bg);}
+.sinp:focus{border-color:var(--g);background:#fff;}
+.ssep{font-size:17px;color:var(--muted);font-weight:700;}
+.sbtn{font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700;}
+.sbtn.saved{border-color:var(--g);color:var(--g);background:var(--g2);}
+.rlbl{padding:7px 13px 3px;font-size:11px;font-weight:700;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--border);}
+/* H2H */
+.h2h-sum{display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;padding:14px;}
+.h2h-val{font-size:27px;font-weight:700;line-height:1;}
+.h2h-lbl{font-size:11px;color:var(--muted);margin-top:3px;}
+/* チームフィルター */
+.tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:10px 13px;}
+.tchip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;}
+.tchip.on{color:#fff;border-color:transparent;}
+/* セクションラベル */
+.slbl{font-size:11px;font-weight:700;color:var(--muted);padding:10px 13px 3px;}
+/* ローディング */
+.loading{text-align:center;padding:28px;color:var(--muted);font-size:13px;}
+/* チャート */
+.chart-wrap{overflow-x:auto;padding:10px 13px;}
+canvas{display:block;max-width:100%;}
+/* PO */
+.po-match{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0;}
+.po-team{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;}
+.po-team:last-child{border-bottom:none;}
+.po-team.winner{background:var(--g2);color:var(--g);}
+.po-team.loser{color:var(--muted);}
+.po-sinp{width:40px;height:34px;text-align:center;font-size:17px;font-weight:700;border:1px solid var(--border);border-radius:6px;background:var(--bg);}
+/* レスポンシブ */
+@media(min-width:600px){body{max-width:660px;margin:0 auto;}.bnav{max-width:660px;left:50%;transform:translateX(-50%);}}
+</style>
+</head>
+<body>
+
+<!-- 順位表 -->
+<div class="page active" id="pg-home">
+  <div class="phdr">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="ptitle">📊 順位表</div>
+      <select id="home-yr" style="width:100px;font-size:13px;padding:5px 8px;" onchange="loadStandings()"></select>
+    </div>
+  </div>
+  <div class="tabs" id="dtabs-home"></div>
+  <div id="standings-area"><div class="loading">データなし</div></div>
+</div>
+
+<!-- 試合 -->
+<div class="page" id="pg-matches">
+  <div class="phdr">
+    <div class="ptitle">⚽ 試合入力</div>
+    <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
+      <select id="m-yr" style="font-size:12px;padding:5px 8px;" onchange="loadMatches()"></select>
+      <select id="m-round" style="font-size:12px;padding:5px 8px;" onchange="renderMatches()"><option value="all">全節</option></select>
+      <select id="m-status" style="font-size:12px;padding:5px 8px;" onchange="renderMatches()">
+        <option value="all">全試合</option><option value="pending">未入力</option><option value="done">入力済</option>
+      </select>
+    </div>
+  </div>
+  <div class="tabs" id="dtabs-matches"></div>
+  <div id="matches-area"><div class="loading">データなし</div></div>
+</div>
+
+<!-- 設定 -->
+<div class="page" id="pg-setup">
+  <div class="phdr"><div class="ptitle">⚙️ 設定</div></div>
+  <div class="card">
+    <div class="card-hdr">📅 新シーズン開始</div>
+    <div class="card-body">
+      <div class="field"><label>年度（何年目か）</label><input type="number" id="s-yr" placeholder="例: 1" min="1"></div>
+      <p style="font-size:11px;color:var(--muted);margin:6px 0 12px;line-height:1.7;">
+        前年度が存在する場合、自動で昇降格を適用してから開始します。<br>
+        <strong style="color:var(--g);">昇格</strong>：1〜2位＋プレーオフ優勝チーム（3チーム）<br>
+        <strong style="color:var(--red);">降格</strong>：下位3チーム（18〜20位相当）<br>
+        1部は昇格なし、3部は降格なしです。
+      </p>
+      <button class="btn btn-g btn-full" onclick="startNewSeason()">▶ この年度を開始する（自動昇降格を適用）</button>
+      <div id="season-start-msg" style="font-size:12px;margin-top:8px;"></div>
+    </div>
+  </div>
+  <div id="setup-divs"></div>
+  <div class="card">
+    <div class="card-hdr">👥 チーム編集（追加・削除）</div>
+    <div class="card-body">
+      <div class="field" style="margin-bottom:10px;">
+        <label>編集する部門</label>
+        <select id="te-div" onchange="renderTeamEditor()">
+          <option value="1">1部</option>
+          <option value="2">2部</option>
+          <option value="3">3部</option>
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <input type="text" id="te-newteam" placeholder="追加するチーム名">
+        <button class="btn btn-g btn-sm" style="flex:0 0 auto;" onclick="addTeamToEditor()">✚ 追加</button>
+      </div>
+      <div id="team-editor-list"></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+        シーズン開始後にチームを削除しても、既存シーズンの試合結果・成績には影響しません。次回のシーズン開始時から反映されます。
+      </p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hdr">🏷️ リーグ名</div>
+    <div class="card-body" id="dname-area"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">📂 過去データの入力</div>
+    <div class="card-body">
+
+      <!-- 年度・部門選択 -->
+      <div class="row" style="margin-bottom:10px;">
+        <div class="field" style="margin:0;flex:1;">
+          <label>年度</label>
+          <input type="number" id="pi-year" placeholder="例: 1" min="1" max="999" value="1">
+        </div>
+        <div class="field" style="margin:0;flex:1;">
+          <label>部門</label>
+          <select id="pi-div">
+            <option value="1">1部</option>
+            <option value="2">2部</option>
+            <option value="3">3部</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0;flex:0 0 auto;align-self:flex-end;">
+          <button class="btn btn-sub btn-sm" onclick="setTeamRows()">チーム数設定</button>
+        </div>
+      </div>
+
+      <!-- チーム数 -->
+      <div class="row" style="margin-bottom:12px;align-items:center;">
+        <label style="font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap;">チーム数：</label>
+        <input type="number" id="pi-count" value="10" min="2" max="30" style="width:70px;flex:0 0 auto;">
+        <button class="btn btn-sub btn-sm" onclick="setTeamRows()">行を作成</button>
+      </div>
+
+      <!-- 入力行 -->
+      <div id="pi-rows"></div>
+
+      <!-- ボタン -->
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-g btn-sm" onclick="savePastEntry()">✚ このシーズンを保存</button>
+        <button class="btn btn-sub btn-sm" onclick="exportCurrentData()">📤 データ書き出し</button>
+      </div>
+      <div id="import-msg" style="font-size:12px;margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">📄 CSVインポート（試合結果）</div>
+    <div class="card-body">
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+        列: year,division,matchday,home_team,away_team,home_goals,away_goals<br>
+        文字コードはUTF-8で保存してください。
+      </p>
+      <input type="file" id="csv-file" accept=".csv" style="margin-bottom:8px;">
+      <button class="btn btn-g btn-sm btn-full" onclick="importCSV()">📥 CSVを読み込んでデータベースに反映</button>
+      <div id="csv-msg" style="font-size:12px;margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr" style="color:var(--red);">🗑️ シーズン削除</div>
+    <div class="card-body">
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+        誤って作成したシーズンを削除します。この操作は取り消せません。
+      </p>
+      <div class="row" style="margin-bottom:10px;">
+        <select id="del-yr" style="flex:1;"></select>
+        <button class="btn btn-sm" style="flex:0 0 auto;background:var(--red2);color:var(--red);border:1px solid #ffcdd2;" onclick="deleteSeason()">削除</button>
+      </div>
+      <div id="del-msg" style="font-size:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 対戦成績 -->
+<div class="page" id="pg-h2h">
+  <div class="phdr">
+    <div class="ptitle">🆚 対戦成績</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:7px;">
+      <select id="h2h-a" style="flex:1;font-size:13px;padding:6px 8px;"></select>
+      <span style="color:var(--muted);font-weight:700;font-size:13px;">VS</span>
+      <select id="h2h-b" style="flex:1;font-size:13px;padding:6px 8px;"></select>
+      <button class="btn btn-g btn-sm" onclick="showH2H()">検索</button>
+    </div>
+  </div>
+  <div id="h2h-area"></div>
+</div>
+
+<!-- 歴代・変動 -->
+<div class="page" id="pg-history">
+  <div class="phdr">
+    <div class="ptitle">📈 歴代・変動</div>
+    <div class="tabs" style="padding:7px 0 0;margin:0;">
+      <div class="tab active" onclick="switchHistTab('alltime',this)">🏆 歴代</div>
+      <div class="tab" onclick="switchHistTab('trend',this)">📊 年度別</div>
+      <div class="tab" onclick="switchHistTab('inseason',this)">🔄 シーズン内</div>
+    </div>
+  </div>
+  <div id="history-area"></div>
+</div>
+
+<!-- 昇格PO -->
+<div class="page" id="pg-playoff">
+  <div class="phdr">
+    <div class="ptitle">🏆 昇格プレーオフ</div>
+    <div style="display:flex;gap:6px;margin-top:7px;">
+      <select id="po-yr" style="font-size:13px;padding:6px 8px;" onchange="renderPlayoff()"></select>
+    </div>
+  </div>
+  <div class="tabs" id="dtabs-po"></div>
+  <div id="playoff-area"></div>
+</div>
+
+<!-- ELO予測 -->
+<div class="page" id="pg-predict">
+  <div class="phdr">
+    <div class="ptitle">🔮 ELO予測</div>
+    <div style="display:flex;gap:6px;margin-top:7px;">
+      <select id="pr-yr" style="font-size:13px;padding:6px 8px;" onchange="renderPredict()"></select>
+    </div>
+  </div>
+  <div class="tabs" id="dtabs-predict"></div>
+  <div id="predict-area"></div>
+</div>
+
+<!-- ボトムナビ -->
+<nav class="bnav">
+  <button class="bnav-btn active" onclick="go('home',this)"><span class="bnav-icon">📊</span>順位</button>
+  <button class="bnav-btn" onclick="go('matches',this)"><span class="bnav-icon">⚽</span>試合</button>
+  <button class="bnav-btn" onclick="go('setup',this)"><span class="bnav-icon">⚙️</span>設定</button>
+  <button class="bnav-btn" onclick="go('h2h',this)"><span class="bnav-icon">🆚</span>対戦</button>
+  <button class="bnav-btn" onclick="go('history',this)"><span class="bnav-icon">📈</span>歴代</button>
+  <button class="bnav-btn" onclick="go('playoff',this)"><span class="bnav-icon">🏆</span>PO</button>
+  <button class="bnav-btn" onclick="go('predict',this)"><span class="bnav-icon">🔮</span>予測</button>
+</nav>
+
+<script>
+// ══ DB (localStorage) ══
+const KEY = 'winner-final-v1';
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY))||init_db(); }catch(e){ return init_db(); } }
+function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"} }, elo:{} }; }
+
+// ══ 状態 ══
+let db = load();
+let curDiv = {home:1, matches:1, po:1, predict:1};
+let allMatches = {};
+let histTab = 'alltime';
+const PAL = ["#00a854","#f5a623","#e53935","#1976d2","#8e24aa","#0097a7","#558b2f","#f57c00","#ad1457","#00838f","#4527a0","#2e7d32"];
+let trendSel = new Set(), isSel = new Set();
+let teDiv = 1;
+
+// ══ 初期化 ══
+function init(){
+  const yr = new Date().getFullYear();
+  document.getElementById('s-yr').value = yr;
+  refreshSeasonSelects();
+  buildDivTabs('dtabs-home', 1, d=>{ curDiv.home=d; loadStandings(); });
+  buildDivTabs('dtabs-matches', 1, d=>{ curDiv.matches=d; loadMatches(); });
+  buildDivTabs('dtabs-po', 1, d=>{ curDiv.po=d; renderPlayoff(); });
+  buildDivTabs('dtabs-predict', 1, d=>{ curDiv.predict=d; renderPredict(); });
+  buildSetup();
+  buildDivNameForm();
+  buildH2HSelects();
+  renderTeamEditor();
+  loadStandings();
+  loadMatches();
+  renderHistAlltime();
+}
+
+function refreshSeasonSelects(){
+  const seasons = getSeasons();
+  const opts = seasons.map(y=>`<option value="${y}">${y}年目</option>`).join('');
+  const empty = '<option value="">—</option>';
+  ['home-yr','m-yr','po-yr','pr-yr','del-yr'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML = opts||empty;
+  });
+}
+
+// ══ ページ切替 ══
+function go(name, btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('pg-'+name).classList.add('active');
+  btn.classList.add('active');
+  window.scrollTo(0,0);
+  if(name==='history') switchHistTab(histTab, document.querySelector('#pg-history .tab.active'));
+  if(name==='playoff') renderPlayoff();
+  if(name==='predict') renderPredict();
+}
+
+// ══ 部門タブ ══
+function buildDivTabs(id, active, cb){
+  const dn = db.config.div_names;
+  document.getElementById(id).innerHTML = [1,2,3].map(d=>`
+    <div class="tab ${d===active?'active':''}" data-d="${d}"
+      onclick="this.parentNode.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');(${cb.toString()})(${d})">
+      ${dn[d]||d+'部'}
+    </div>`).join('');
+}
+
+// ══ データアクセス ══
+function getSeasons(){ return Object.keys(db.seasons).sort((a,b)=>parseInt(b)-parseInt(a)); }
+function getDivData(yr,div){ yr=String(yr); return db.seasons[yr]?.divisions?.[String(div)]; }
+function getDivName(div){ return db.config.div_names[div]||div+'部'; }
+
+// ══ 順位計算 ══
+function calcStandings(yr,div){ yr=String(yr);
+  const d = getDivData(yr,div);
+  if(!d) return [];
+  const s={};
+  d.teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+  (d.matches||[]).forEach(m=>{
+    if(!m.played) return;
+    const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
+    s[h].p++;s[a].p++;s[h].gf+=hs;s[h].ga+=as_;s[a].gf+=as_;s[a].ga+=hs;
+    s[h].gd=s[h].gf-s[h].ga;s[a].gd=s[a].gf-s[a].ga;
+    if(hs>as_){s[h].w++;s[h].pts+=3;s[a].l++;}
+    else if(hs<as_){s[a].w++;s[a].pts+=3;s[h].l++;}
+    else{s[h].d++;s[h].pts++;s[a].d++;s[a].pts++;}
+  });
+  return Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf).map((r,i)=>({...r,rank:i+1}));
+}
+
+// ══ 順位表 ══
+function loadStandings(){
+  const yr = document.getElementById('home-yr').value;
+  const div = curDiv.home;
+  if(!yr){ document.getElementById('standings-area').innerHTML='<div class="loading">年度がありません</div>'; return; }
+  const rows = calcStandings(yr, div);
+  const d = getDivData(yr, div);
+  const matches = d?.matches||[];
+  const done = matches.filter(m=>m.played).length;
+  const total = matches.length;
+  const pN = d?.promoteN||1, rN = d?.relegateN||1;
+  const color = ['','#f5a623','#00a854','#0288d1'][div];
+  const n = rows.length;
+
+  let html=`<div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${total?done/total*100:0}%;background:${color}"></div></div><div class="prog-txt">${done}/${total} 試合</div></div>`;
+  if(!rows.length){ html+='<div class="loading">データなし</div>'; document.getElementById('standings-area').innerHTML=html; return; }
+  html+=`<div class="card"><table class="stbl"><thead><tr><th>#</th><th>チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=>{
+    const isP = div!==1&&i<pN, isR = div!==3&&n-i<=rN;
+    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const gd = r.gd>0?'+'+r.gd:r.gd;
+    const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
+    const badge = isP?'<span style="font-size:9px;color:var(--g)">↑</span>':isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'';
+    html+=`<tr class="${isP?'row-p':isR?'row-r':''}"><td><span class="rn ${rc}">${r.rank}</span></td><td>${r.team}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td style="${gdCol}">${gd}</td><td><span class="pts">${r.pts}</span></td></tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  document.getElementById('standings-area').innerHTML=html;
+}
+
+// ══ 試合生成 ══
+function genMatches(teams){
+  const t=[...teams];
+  if(t.length%2)t.push(null);
+  const N=t.length,fixed=t[0],rot=t.slice(1);
+  const result=[];let id=0;
+  for(let r=0;r<N-1;r++){
+    const rotated=r?[...rot.slice(-r),...rot.slice(0,-r)]:[...rot];
+    const circle=[fixed,...rotated];
+    for(let i=0;i<N/2;i++){
+      const h=circle[i],a=circle[N-1-i];
+      if(h&&a){
+        result.push({id:id++,round:r+1,leg:1,home:h,away:a,home_score:null,away_score:null,played:false});
+        result.push({id:id++,round:r+1,leg:2,home:a,away:h,home_score:null,away_score:null,played:false});
+      }
+    }
+  }
+  result.sort((a,b)=>a.leg-b.leg||a.round-b.round);
+  result.forEach((m,i)=>m.id=i);
+  return result;
+}
+
+// ══ 試合入力 ══
+function loadMatches(){
+  const yr = document.getElementById('m-yr').value;
+  const div = curDiv.matches;
+  if(!yr){ document.getElementById('matches-area').innerHTML='<div class="loading">データなし</div>'; return; }
+  const d = getDivData(yr, div);
+  const matches = d?.matches||[];
+  allMatches[div] = matches;
+  // 節フィルタ更新
+  const rounds=[...new Set(matches.map(m=>`${m.leg}-${m.round}`))].sort((a,b)=>{
+    const[al,ar]=a.split('-').map(Number),[bl,br]=b.split('-').map(Number);return al-bl||ar-br;
+  });
+  const sel=document.getElementById('m-round');
+  sel.innerHTML='<option value="all">全節</option>'+rounds.map(k=>{const[l,r]=k.split('-');return`<option value="${k}">${l}回戦 第${r}節</option>`;}).join('');
+  renderMatches();
+}
+
+function renderMatches(){
+  const div=curDiv.matches;
+  const yr=document.getElementById('m-yr').value;
+  const data=allMatches[div]||[];
+  const rv=document.getElementById('m-round').value;
+  const sv=document.getElementById('m-status').value;
+  let filtered=[...data];
+  if(rv!=='all'){const[l,r]=rv.split('-').map(Number);filtered=filtered.filter(m=>m.leg===l&&m.round===r);}
+  if(sv==='pending')filtered=filtered.filter(m=>!m.played);
+  if(sv==='done')filtered=filtered.filter(m=>m.played);
+  const groups={};
+  filtered.forEach(m=>{const k=`${m.leg}-${m.round}`;(groups[k]=groups[k]||[]).push(m);});
+  const keys=Object.keys(groups).sort((a,b)=>{const[al,ar]=a.split('-').map(Number),[bl,br]=b.split('-').map(Number);return al-bl||ar-br;});
+  if(!keys.length){document.getElementById('matches-area').innerHTML='<div class="loading">該当なし</div>';return;}
+  let html='';
+  keys.forEach(k=>{
+    const[l,r]=k.split('-');
+    html+=`<div class="rlbl">${l}回戦　第${r}節</div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
+    groups[k].forEach(m=>{
+      const hs=m.home_score!==null?m.home_score:'',as_=m.away_score!==null?m.away_score:'';
+      html+=`<div class="mcard"><div class="mteam home">${m.home}</div>
+        <div class="mcenter">
+          <div class="srow">
+            <input class="sinp" type="number" min="0" max="99" value="${hs}" placeholder="-" id="hs-${div}-${m.id}">
+            <span class="ssep">:</span>
+            <input class="sinp" type="number" min="0" max="99" value="${as_}" placeholder="-" id="as-${div}-${m.id}">
+          </div>
+          <button class="sbtn ${m.played?'saved':''}" id="sb-${div}-${m.id}" onclick="saveMatch('${yr}',${div},${m.id})">
+            ${m.played?'✓ 保存済':'保存'}
+          </button>
+        </div>
+        <div class="mteam">${m.away}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  });
+  document.getElementById('matches-area').innerHTML=html;
+}
+
+function saveMatch(yr,div,id){
+  const hs=parseInt(document.getElementById(`hs-${div}-${id}`).value);
+  const as_=parseInt(document.getElementById(`as-${div}-${id}`).value);
+  if(isNaN(hs)||isNaN(as_)||hs<0||as_<0){alert('スコアを正しく入力してください');return;}
+  const m=getDivData(yr,div)?.matches?.find(x=>x.id===id);
+  if(!m)return;
+  m.home_score=hs;m.away_score=as_;m.played=true;
+  save(db);
+  const btn=document.getElementById(`sb-${div}-${id}`);
+  if(btn){btn.textContent='✓ 保存済';btn.classList.add('saved');}
+  allMatches[div]=[...(getDivData(yr,div)?.matches||[])];
+}
+
+// ══ 設定 ══
+function buildSetup(){
+  let html='';
+  [1,2,3].forEach(div=>{
+    const color=['','#f5a623','#00a854','#0288d1'][div];
+    const crown=['','👑','🥈','🥉'][div];
+    const teams=Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
+    html+=`<div class="card">
+      <div class="card-hdr" style="color:${color}">${crown} ${getDivName(div)}</div>
+      <div class="card-body">
+        <div class="field"><label>チーム登録（1行1チーム）</label>
+          <textarea id="ta-${div}" placeholder="チーム名を1行ずつ"></textarea>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button class="btn btn-g btn-sm" onclick="addTeams(${div})">✚ 追加</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;">${teams.length?`登録済 ${teams.length}チーム: ${teams.slice(0,6).join('、')}${teams.length>6?'…':''}`:'未登録'}</div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('setup-divs').innerHTML=html;
+}
+
+function addTeams(div){
+  const ta=document.getElementById(`ta-${div}`);
+  const lines=ta.value.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length){alert('チーム名を入力してください');return;}
+  let added=0;
+  lines.forEach(name=>{
+    if(!db.teams[name]){db.teams[name]={div,active:true};added++;}
+  });
+  ta.value='';save(db);
+  alert(`${added}チームを追加しました`);
+  buildSetup();
+}
+
+// ══ 自動昇降格 + シーズン一括開始 ══
+const AUTO_PROMOTE_N = 2;   // 自動昇格枠（1〜2位）
+const AUTO_RELEGATE_N = 3;  // 自動降格枠（下位3チーム）
+
+function computePromotionMoves(prevYr){
+  const moves = [];
+  [1,2,3].forEach(div=>{
+    const d = getDivData(prevYr, div);
+    if(!d || !d.started) return;
+    const rows = calcStandings(prevYr, div);
+    const n = rows.length;
+    if(!n) return;
+
+    if(div>1){
+      // 上位2チーム自動昇格
+      rows.slice(0, AUTO_PROMOTE_N).forEach(r=>{
+        moves.push({team:r.team, from:div, to:div-1, reason:'順位'});
+      });
+      // プレーオフ優勝チームも昇格
+      if(d.playoff?.enabled && d.playoff.winner){
+        const already = moves.some(m=>m.team===d.playoff.winner && m.from===div);
+        if(!already){
+          moves.push({team:d.playoff.winner, from:div, to:div-1, reason:'PO優勝'});
+        }
+      }
+    }
+    if(div<3){
+      // 下位3チーム自動降格
+      rows.slice(Math.max(0, n-AUTO_RELEGATE_N)).forEach(r=>{
+        // 既に昇格対象になっている場合はスキップ（安全策）
+        const alreadyPromoted = moves.some(m=>m.team===r.team && m.to===div-1);
+        if(!alreadyPromoted){
+          moves.push({team:r.team, from:div, to:div+1, reason:'順位'});
+        }
+      });
+    }
+  });
+  return moves;
+}
+
+function startNewSeason(){
+  const yr = parseInt(document.getElementById('s-yr').value);
+  const msg = document.getElementById('season-start-msg');
+  if(!yr || yr<1){ msg.style.color='var(--red)'; msg.textContent='年度を入力してください'; return; }
+  if(db.seasons[String(yr)]){ msg.style.color='var(--red)'; msg.textContent=`「${yr}年目」は既に存在します`; return; }
+
+  const prevYr = String(yr-1);
+  let moves = [];
+  let confirmMsg = `「${yr}年目」を開始します。\n\n`;
+
+  if(db.seasons[prevYr]){
+    moves = computePromotionMoves(prevYr);
+    if(moves.length){
+      confirmMsg += `【自動昇降格】\n`;
+      moves.forEach(m=>{
+        const arrow = m.to < m.from ? '🔼' : '🔽';
+        confirmMsg += `${arrow} ${m.team}: ${m.from}部→${m.to}部（${m.reason}）\n`;
+      });
+      confirmMsg += `\n`;
+    }
+  }
+
+  // 開始予定の部門とチーム数をプレビュー
+  const preview = [1,2,3].map(div=>{
+    const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
+    return {div, count: teams.length};
+  });
+  confirmMsg += preview.map(p=>`${getDivName(p.div)}: ${p.count}チーム`).join('\n');
+
+  if(!confirm(confirmMsg)) return;
+
+  // 昇降格を適用
+  moves.forEach(m=>{
+    if(db.teams[m.team]) db.teams[m.team].div = m.to;
+  });
+
+  // 各部門でシーズン開始（2チーム以上のみ）
+  const started = [];
+  const skipped = [];
+  [1,2,3].forEach(div=>{
+    const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
+    if(teams.length>=2){
+      db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
+      db.seasons[String(yr)].divisions[String(div)] = {
+        teams, matches:genMatches(teams), started:true,
+        promoteN: AUTO_PROMOTE_N, relegateN: AUTO_RELEGATE_N,
+        playoff: {enabled:div>1, playoffN:4, matches:[], winner:null}
+      };
+      started.push(div);
+    } else {
+      skipped.push(div);
+    }
+  });
+
+  save(db);
+  refreshSeasonSelects();
+  buildSetup();
+  renderTeamEditor();
+  loadStandings();
+  loadMatches();
+  renderHistAlltime();
+
+  msg.style.color='var(--g)';
+  msg.textContent = `✓ ${yr}年目を開始しました（${started.map(d=>getDivName(d)).join('・')}）${moves.length?` / 昇降格${moves.length}件反映`:''}${skipped.length?` / チーム不足で未開始: ${skipped.map(d=>getDivName(d)).join('・')}`:''}`;
+}
+
+function buildDivNameForm(){
+  let html='';
+  [1,2,3].forEach(div=>{
+    html+=`<div class="field"><label>第${div}部</label>
+      <div class="row">
+        <input type="text" id="dn-${div}" value="${getDivName(div)}">
+        <button class="btn btn-sub btn-sm" style="flex:0 0 auto;" onclick="saveDivName(${div})">保存</button>
+      </div></div>`;
+  });
+  document.getElementById('dname-area').innerHTML=html;
+}
+
+function saveDivName(div){
+  const v=document.getElementById(`dn-${div}`).value.trim();
+  if(!v)return;
+  db.config.div_names[div]=v;
+  save(db);
+  alert('保存しました');
+  buildDivTabs('dtabs-home',curDiv.home,d=>{curDiv.home=d;loadStandings();});
+  buildDivTabs('dtabs-matches',curDiv.matches,d=>{curDiv.matches=d;loadMatches();});
+  buildSetup();
+}
+
+// ══ チーム編集（追加・削除） ══
+function renderTeamEditor(){
+  teDiv = parseInt(document.getElementById('te-div').value)||1;
+  const teams = Object.entries(db.teams).filter(([_,t])=>t.div===teDiv);
+  const el = document.getElementById('team-editor-list');
+  if(!teams.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">チームがありません</div>'; return; }
+  let html='';
+  teams.forEach(([name,info])=>{
+    const inactive = !info.active;
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;${inactive?'opacity:.45;':''}">
+      <span style="flex:1;font-size:13px;font-weight:700;">${name}${inactive?' (削除済)':''}</span>
+      ${inactive
+        ? `<button class="btn btn-sub btn-sm" onclick="restoreTeam('${name.replace(/'/g,"\\'")}')">復元</button>`
+        : `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="removeTeamFromEditor('${name.replace(/'/g,"\\'")}')">削除</button>`
+      }
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function addTeamToEditor(){
+  const inp = document.getElementById('te-newteam');
+  const name = inp.value.trim();
+  if(!name){ alert('チーム名を入力してください'); return; }
+  if(db.teams[name] && db.teams[name].active){ alert('すでに存在するチーム名です'); return; }
+  db.teams[name] = {div: teDiv, active: true};
+  inp.value='';
+  save(db);
+  renderTeamEditor();
+  buildSetup();
+}
+
+function removeTeamFromEditor(name){
+  if(!confirm(`「${name}」を削除しますか？\n（過去の試合結果には影響しません）`))return;
+  if(db.teams[name]) db.teams[name].active = false;
+  save(db);
+  renderTeamEditor();
+  buildSetup();
+  buildH2HSelects();
+}
+
+function restoreTeam(name){
+  if(db.teams[name]) db.teams[name].active = true;
+  save(db);
+  renderTeamEditor();
+  buildSetup();
+  buildH2HSelects();
+}
+
+// ══ CSVインポート ══
+function importCSV(){
+  const fileInput = document.getElementById('csv-file');
+  const msg = document.getElementById('csv-msg');
+  const file = fileInput.files[0];
+  if(!file){ msg.style.color='var(--red)'; msg.textContent='ファイルを選択してください'; return; }
+
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).filter(l=>l.trim());
+      const header = lines[0].split(',').map(h=>h.trim());
+      const idx = {
+        year: header.indexOf('year'),
+        div: header.indexOf('division'),
+        md: header.indexOf('matchday'),
+        home: header.indexOf('home_team'),
+        away: header.indexOf('away_team'),
+        hg: header.indexOf('home_goals'),
+        ag: header.indexOf('away_goals'),
+      };
+      if(Object.values(idx).some(v=>v===-1)){
+        msg.style.color='var(--red)';
+        msg.textContent='列名が正しくありません（year,division,matchday,home_team,away_team,home_goals,away_goals）';
+        return;
+      }
+
+      // 年度・部門ごとにグルーピング
+      const grouped = {};
+      let skipped = 0;
+      for(let i=1;i<lines.length;i++){
+        const cols = lines[i].split(',');
+        if(cols.length < header.length){ skipped++; continue; }
+        const yr = cols[idx.year].trim();
+        const dv = cols[idx.div].trim();
+        const md = parseInt(cols[idx.md]);
+        const home = cols[idx.home].trim();
+        const away = cols[idx.away].trim();
+        const hg = parseInt(cols[idx.hg]);
+        const ag = parseInt(cols[idx.ag]);
+        if(!yr||!dv||!home||!away||isNaN(hg)||isNaN(ag)||home.includes('?')||away.includes('?')){ skipped++; continue; }
+        const key = `${yr}-${dv}`;
+        grouped[key] = grouped[key] || [];
+        grouped[key].push({round:md, home, away, hg, ag});
+      }
+
+      let seasonsCreated = 0, matchesSaved = 0;
+      Object.entries(grouped).forEach(([key, matches])=>{
+        const [yr, dv] = key.split('-');
+        const teams = [...new Set(matches.flatMap(m=>[m.home,m.away]))];
+
+        db.seasons[yr] = db.seasons[yr] || {divisions:{}};
+        // 既存があれば teams をマージ、matches は再生成
+        const genned = genMatches(teams);
+        // matchday(round)とhome/awayが一致する試合にスコアを反映
+        matches.forEach(m=>{
+          // その節のうち home/away が一致する試合を探す(leg跨いでも対応)
+          const target = genned.find(g=>g.round===m.round && g.home===m.home && g.away===m.away && !g.played);
+          if(target){ target.home_score=m.hg; target.away_score=m.ag; target.played=true; matchesSaved++; }
+          else {
+            // 見つからなければ round を無視して home/away ペアの未消化分に割当
+            const alt = genned.find(g=>g.home===m.home && g.away===m.away && !g.played);
+            if(alt){ alt.home_score=m.hg; alt.away_score=m.ag; alt.played=true; matchesSaved++; }
+          }
+        });
+
+        db.seasons[yr].divisions[dv] = {
+          teams, matches: genned, started: true,
+          promoteN: AUTO_PROMOTE_N,
+          relegateN: AUTO_RELEGATE_N,
+          playoff: {enabled:true, playoffN:4, matches:[], winner:null}
+        };
+        teams.forEach(t=>{ if(!db.teams[t]) db.teams[t]={div:parseInt(dv),active:true}; });
+        seasonsCreated++;
+      });
+
+      save(db);
+      refreshSeasonSelects();
+      buildSetup();
+      renderTeamEditor();
+      buildH2HSelects();
+      msg.style.color='var(--g)';
+      msg.textContent = `✓ ${seasonsCreated}件の年度×部門、${matchesSaved}試合を読み込みました${skipped?`（${skipped}行スキップ）`:''}`;
+    }catch(err){
+      msg.style.color='var(--red)';
+      msg.textContent = 'エラー: ' + err.message;
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ══ シーズン削除 ══
+function deleteSeason(){
+  const sel = document.getElementById('del-yr');
+  const yr = sel.value;
+  const msg = document.getElementById('del-msg');
+  if(!yr){ msg.style.color='var(--red)'; msg.textContent='削除するシーズンを選択してください'; return; }
+
+  const divisions = db.seasons[yr]?.divisions || {};
+  const summary = [1,2,3].map(d=>{
+    const dd = divisions[String(d)];
+    if(!dd) return null;
+    const teamCount = dd.teams?.length || 0;
+    const matchCount = dd.matches?.filter(m=>m.played).length || 0;
+    return `${getDivName(d)}: ${teamCount}チーム / ${matchCount}試合`;
+  }).filter(Boolean).join('\n');
+
+  if(!confirm(`「${yr}年目」を完全に削除します。\n\n${summary}\n\nこの操作は取り消せません。本当によろしいですか？`)) return;
+
+  delete db.seasons[yr];
+  save(db);
+  refreshSeasonSelects();
+  buildSetup();
+  loadStandings();
+  loadMatches();
+  renderHistAlltime();
+  msg.style.color='var(--g)';
+  msg.textContent = `✓ 「${yr}年目」を削除しました`;
+  setTimeout(()=>msg.textContent='', 3000);
+}
+
+// ══ 対戦成績 ══
+function buildH2HSelects(){
+  const teams=Object.keys(db.teams).filter(t=>db.teams[t].active);
+  const opts=teams.map(t=>`<option value="${t}">${t}</option>`).join('');
+  document.getElementById('h2h-a').innerHTML=opts;
+  document.getElementById('h2h-b').innerHTML=opts;
+  if(teams.length>1)document.getElementById('h2h-b').selectedIndex=1;
+}
+
+function showH2H(){
+  const a=document.getElementById('h2h-a').value;
+  const b=document.getElementById('h2h-b').value;
+  if(!a||!b||a===b){alert('異なるチームを選択してください');return;}
+  let wA=0,wB=0,draws=0,gfA=0,gfB=0;const hist=[];
+  Object.entries(db.seasons).sort((x,y)=>parseInt(y[0])-parseInt(x[0])).forEach(([yr,s])=>{
+    Object.entries(s.divisions||{}).forEach(([dv,d])=>{
+      (d.matches||[]).forEach(m=>{
+        if(!m.played)return;
+        if(!({[m.home]:1,[m.away]:1}[a]&&{[m.home]:1,[m.away]:1}[b]))return;
+        const aH=m.home===a,ag=aH?m.home_score:m.away_score,bg=aH?m.away_score:m.home_score;
+        gfA+=ag;gfB+=bg;
+        const res=ag>bg?'W':ag<bg?'L':'D';
+        if(res==='W')wA++;else if(res==='L')wB++;else draws++;
+        hist.push({yr,div:+dv,leg:m.leg,round:m.round,home:m.home,away:m.away,hs:m.home_score,as_:m.away_score,res});
+      });
+    });
+  });
+  let html=`<div class="card"><div class="h2h-sum">
+    <div><div class="h2h-val" style="color:var(--g)">${wA}</div><div class="h2h-lbl">${a} 勝</div></div>
+    <div><div class="h2h-val" style="color:var(--gold)">${draws}</div><div class="h2h-lbl">引き分け</div></div>
+    <div><div class="h2h-val" style="color:var(--red)">${wB}</div><div class="h2h-lbl">${b} 勝</div></div>
+  </div>
+  <div style="text-align:center;font-size:12px;color:var(--muted);padding:0 13px 12px;">通算 ${gfA}得点/${gfB}失点（${a}視点） | ${hist.length}試合</div></div>`;
+  if(hist.length){
+    html+=`<div class="slbl">対戦履歴</div><div class="card">`;
+    hist.forEach(h=>{
+      const rc=h.res==='W'?'var(--g)':h.res==='L'?'var(--red)':'var(--gold)';
+      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
+        <div style="font-size:11px;color:var(--muted);flex:0 0 auto;">${h.yr}年目<br>${getDivName(h.div)}</div>
+        <div style="flex:1;text-align:center;font-size:13px;font-weight:700;">${h.home} ${h.hs}−${h.as_} ${h.away}</div>
+        <div style="font-size:15px;font-weight:700;color:${rc};flex:0 0 auto;">${h.res}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+  document.getElementById('h2h-area').innerHTML=html;
+}
+
+// ══ 歴代 ══
+function switchHistTab(tab, el){
+  document.querySelectorAll('#pg-history .tab').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  histTab=tab;
+  if(tab==='alltime')renderHistAlltime();
+  else if(tab==='trend')renderHistTrend();
+  else renderHistInseason();
+}
+
+function renderHistAlltime(){
+  const seasons=getSeasons();
+  let html='';
+  if(!seasons.length){
+    html='<div class="loading">データなし<br><span style="font-size:11px;">設定タブから過去データを読み込めます</span></div>';
+    document.getElementById('history-area').innerHTML=html; return;
+  }
+
+  // シーズン詳細
+  html+=`<div class="card">`;
+  seasons.forEach(yr=>{
+    html+=`<div style="border-bottom:1px solid #f0f2f5;">
+      <div style="padding:10px 13px 6px;font-size:12px;font-weight:700;color:var(--muted);">${yr}年目シーズン</div>`;
+    [1,2,3].forEach(div=>{
+      const rows=getStandings(yr,div);
+      if(!rows.length) return;
+      const color=['','#f5a623','#00a854','#0288d1'][div];
+      const isPast=!!getDivData(yr,div)?.past_standings;
+      html+=`<div style="padding:0 13px 8px;">
+        <div style="font-size:10px;font-weight:700;color:${color};margin-bottom:4px;">${getDivName(div)}</div>`;
+      rows.slice(0,5).forEach((r,i)=>{
+        const rc=i===0?'var(--gold)':i===1?'#90a4ae':i===2?'#ff8a65':'var(--muted)';
+        const pts=r.pts!==null&&r.pts!==undefined?`<span style="font-size:11px;color:var(--muted);">${r.pts}pt</span>`:'';
+        html+=`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+          <span style="font-size:12px;font-weight:700;color:${rc};width:20px;">${r.rank||i+1}</span>
+          <span style="flex:1;font-size:13px;font-weight:700;">${r.team}</span>
+          ${pts}
+        </div>`;
+      });
+      if(rows.length>5){
+        html+=`<div style="font-size:11px;color:var(--muted);padding:2px 0;">…他${rows.length-5}チーム</div>`;
+      }
+      html+=`</div>`;
+    });
+    html+=`</div>`;
+  });
+  html+=`</div>`;
+
+  // 最多優勝（1部）
+  const wins={};
+  seasons.forEach(yr=>{
+    const r=getStandings(yr,1);
+    if(r[0]) wins[r[0].team]=(wins[r[0].team]||0)+1;
+  });
+  const ranked=Object.entries(wins).sort((a,b)=>b[1]-a[1]);
+  if(ranked.length){
+    html+=`<div class="slbl">最多優勝（1部）</div><div class="card">`;
+    ranked.slice(0,8).forEach(([team,cnt],i)=>{
+      const rc=i===0?'var(--gold)':i===1?'#90a4ae':i===2?'#ff8a65':'var(--muted)';
+      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;">
+        <span style="font-size:15px;font-weight:700;color:${rc};width:26px;">${i+1}</span>
+        <span style="flex:1;font-size:13px;font-weight:700;">${team}</span>
+        <span style="font-size:13px;color:var(--gold);font-weight:700;">${cnt}回</span>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+  document.getElementById('history-area').innerHTML=html;
+}
+
+let trendDiv = 1;
+function renderHistTrend(){
+  const seasons=getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
+  if(seasons.length<2){document.getElementById('history-area').innerHTML='<div class="loading">2シーズン以上必要です</div>';return;}
+  const div=trendDiv;
+  const teamRanks={};const allTeams=[];
+  seasons.forEach(yr=>{
+    calcStandings(yr,div).forEach(r=>{
+      if(!teamRanks[r.team]){teamRanks[r.team]={};allTeams.push(r.team);}
+      teamRanks[r.team][yr]=r.rank;
+    });
+  });
+  if(!trendSel.size)trendSel=new Set(allTeams.slice(0,8));
+  let html=`<div class="tabs" style="padding:9px 12px 0;">`;
+  [1,2,3].forEach(d=>{
+    html+=`<div class="tab ${d===trendDiv?'active':''}" onclick="trendDiv=${d};trendSel.clear();renderHistTrend();">${getDivName(d)}</div>`;
+  });
+  html+=`</div>`;
+  if(!allTeams.length){
+    html+=`<div class="loading">データなし</div>`;
+    document.getElementById('history-area').innerHTML=html; return;
+  }
+  html+=`<div class="tfilter">`;
+  allTeams.forEach((t,i)=>{
+    const c=PAL[i%PAL.length],on=trendSel.has(t);
+    html+=`<button class="tchip ${on?'on':''}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
+      onclick="toggleTrend('${t.replace(/'/g,"\\'")}',this,'${c}')">${t}</button>`;
+  });
+  html+=`</div><div class="card chart-wrap"><canvas id="trend-cv" height="220"></canvas></div>`;
+  document.getElementById('history-area').innerHTML=html;
+  setTimeout(()=>drawTrend(seasons,allTeams,teamRanks),50);
+}
+
+function toggleTrend(t,el,c){
+  trendSel.has(t)?trendSel.delete(t):trendSel.add(t);
+  el.classList.toggle('on');
+  if(trendSel.has(t)){el.style.background=c;el.style.color='#fff';el.style.borderColor='transparent';}
+  else{el.style.background='';el.style.color=c;el.style.borderColor=c;}
+  const seasons=getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
+  const div=trendDiv;const teamRanks={};const allTeams=[];
+  seasons.forEach(yr=>calcStandings(yr,div).forEach(r=>{if(!teamRanks[r.team]){teamRanks[r.team]={};allTeams.push(r.team);}teamRanks[r.team][yr]=r.rank;}));
+  drawTrend(seasons,allTeams,teamRanks);
+}
+
+function drawTrend(seasons,allTeams,teamRanks){
+  const cv=document.getElementById('trend-cv');if(!cv)return;
+  const W=cv.offsetWidth||300;cv.width=W;cv.height=220;
+  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,220);
+  const pl=40,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=220-pt-pb;
+  const n=seasons.length;
+  const maxR=Math.max(...allTeams.flatMap(t=>Object.values(teamRanks[t]||{})),4);
+  const xs=i=>pl+gw*i/Math.max(n-1,1);
+  const ys=r=>pt+gh*(r-1)/Math.max(maxR-1,1);
+  ctx.strokeStyle='#eee';ctx.lineWidth=1;
+  for(let r=1;r<=maxR;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
+  seasons.forEach((yr,i)=>{ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(yr+'年目',xs(i),220-pb+12);});
+  allTeams.forEach((t,ti)=>{
+    if(!trendSel.has(t))return;
+    const c=PAL[ti%PAL.length];
+    const pts=seasons.map((yr,i)=>teamRanks[t]?.[yr]!=null?{x:xs(i),y:ys(teamRanks[t][yr]),r:teamRanks[t][yr]}:null);
+    const valid=pts.filter(Boolean);
+    if(valid.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=2;ctx.moveTo(valid[0].x,valid[0].y);valid.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
+    valid.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();});
+    if(valid.length){const last=valid[valid.length-1];ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText(t,last.x+7,last.y+4);}
+  });
+}
+
+function renderHistInseason(){
+  const seasons=getSeasons();
+  let html=`<div style="display:flex;gap:6px;padding:10px 12px;flex-wrap:wrap;">
+    <select id="is-yr" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
+      ${seasons.map(y=>`<option value="${y}">${y}年目</option>`).join('')}
+    </select>
+    <select id="is-div" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
+      ${[1,2,3].map(d=>`<option value="${d}">${getDivName(d)}</option>`).join('')}
+    </select>
+  </div><div id="is-content"></div>`;
+  document.getElementById('history-area').innerHTML=html;
+  reloadInseason();
+}
+
+function reloadInseason(){
+  const yr=document.getElementById('is-yr')?.value||getSeasons()[0];
+  const div=parseInt(document.getElementById('is-div')?.value||1);
+  const d=getDivData(yr,div);
+  const matches=d?.matches||[];
+  const played=matches.filter(m=>m.played);
+  const allTeams=sorted([...new Set([...matches.map(m=>m.home),...matches.map(m=>m.away)])]);
+  if(!played.length){document.getElementById('is-content').innerHTML='<div class="loading">試合結果がありません</div>';return;}
+  if(!isSel.size)isSel=new Set(allTeams);
+  const rl=sorted([...new Set(played.map(m=>`${m.leg}-${m.round}`))]);
+  const snaps=rl.map(k=>{
+    const[l,r]=k.split('-').map(Number);
+    const sub=played.filter(m=>(m.leg<l)||(m.leg===l&&m.round<=r));
+    const s={};allTeams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+    sub.forEach(m=>{const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
+      s[h].p++;s[a].p++;s[h].gf+=hs;s[h].ga+=as_;s[a].gf+=as_;s[a].ga+=hs;s[h].gd=s[h].gf-s[h].ga;s[a].gd=s[a].gf-s[a].ga;
+      if(hs>as_){s[h].pts+=3;s[h].w++;s[a].l++;}else if(hs<as_){s[a].pts+=3;s[a].w++;s[h].l++;}else{s[h].pts++;s[a].pts++;s[h].d++;s[a].d++;}
+    });
+    const ranked=Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
+    ranked.forEach((r,i)=>r.rank=i+1);
+    return{leg:l,round:r,ranks:Object.fromEntries(ranked.map(r=>[r.team,r.rank]))};
+  });
+  let html=`<div class="tfilter">`;
+  allTeams.forEach((t,i)=>{
+    const c=PAL[i%PAL.length],on=isSel.has(t);
+    html+=`<button class="tchip ${on?'on':''}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
+      onclick="toggleIs('${t.replace(/'/g,"\\'")}',this,'${c}')">${t}</button>`;
+  });
+  html+=`</div><div class="card chart-wrap"><canvas id="is-cv" height="220"></canvas></div>`;
+  document.getElementById('is-content').innerHTML=html;
+  setTimeout(()=>drawIsChart(snaps,allTeams),50);
+}
+
+function toggleIs(t,el,c){
+  isSel.has(t)?isSel.delete(t):isSel.add(t);
+  el.classList.toggle('on');
+  if(isSel.has(t)){el.style.background=c;el.style.color='#fff';el.style.borderColor='transparent';}
+  else{el.style.background='';el.style.color=c;el.style.borderColor=c;}
+  const yr=document.getElementById('is-yr')?.value;
+  const div=parseInt(document.getElementById('is-div')?.value||1);
+  const d=getDivData(yr,div);
+  const matches=d?.matches||[];
+  const played=matches.filter(m=>m.played);
+  const allTeams=sorted([...new Set([...matches.map(m=>m.home),...matches.map(m=>m.away)])]);
+  const rl=sorted([...new Set(played.map(m=>`${m.leg}-${m.round}`))]);
+  const snaps=rl.map(k=>{
+    const[l,r]=k.split('-').map(Number);
+    const sub=played.filter(m=>(m.leg<l)||(m.leg===l&&m.round<=r));
+    const s={};allTeams.forEach(t=>s[t]={pts:0,gd:0,gf:0});
+    sub.forEach(m=>{const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
+      s[h].gf+=hs;s[h].gd+=hs-as_;s[a].gf+=as_;s[a].gd+=as_-hs;
+      if(hs>as_)s[h].pts+=3;else if(hs<as_)s[a].pts+=3;else{s[h].pts++;s[a].pts++;}
+    });
+    const ranked=allTeams.slice().sort((a,b)=>s[b].pts-s[a].pts||s[b].gd-s[a].gd||s[b].gf-s[a].gf);
+    return{leg:l,round:r,ranks:Object.fromEntries(ranked.map((t,i)=>[t,i+1]))};
+  });
+  drawIsChart(snaps,allTeams);
+}
+
+function drawIsChart(snaps,allTeams){
+  const cv=document.getElementById('is-cv');if(!cv)return;
+  const W=cv.offsetWidth||300;cv.width=W;cv.height=220;
+  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,220);
+  const pl=40,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=220-pt-pb;
+  const n=snaps.length,nt=allTeams.length;
+  const xs=i=>pl+gw*i/Math.max(n-1,1);
+  const ys=r=>pt+gh*(r-1)/Math.max(nt-1,1);
+  ctx.strokeStyle='#eee';ctx.lineWidth=1;
+  for(let r=1;r<=nt;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
+  snaps.forEach((s,i)=>{ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText(`${s.leg}-${s.round}`,xs(i),220-pb+10);});
+  allTeams.forEach((t,ti)=>{
+    if(!isSel.has(t))return;
+    const c=PAL[ti%PAL.length];
+    const pts=snaps.map((s,i)=>s.ranks[t]!=null?{x:xs(i),y:ys(s.ranks[t])}:null).filter(Boolean);
+    if(pts.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=2;ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
+    pts.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();});
+    if(pts.length){const last=pts[pts.length-1];ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText(t,last.x+6,last.y+4);}
+  });
+}
+
+// ══ 昇格PO ══
+function renderPlayoff(){
+  const yr=document.getElementById('po-yr').value;
+  const div=curDiv.po;
+  if(!yr){document.getElementById('playoff-area').innerHTML='<div class="loading">年度なし</div>';return;}
+  const d=getDivData(yr,div);
+  if(!d||!d.started){document.getElementById('playoff-area').innerHTML='<div class="loading">未開始</div>';return;}
+  const po=d.playoff||{enabled:false,playoffN:4,matches:[],winner:null};
+  const rows=calcStandings(yr,div);
+  const pN=d.promoteN||1;
+  let html=`<div class="card"><div class="card-body">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;">
+      <input type="checkbox" ${po.enabled?'checked':''} onchange="togglePO('${yr}',${div},this.checked)" style="width:16px;height:16px;accent-color:var(--g);">
+      <span style="font-size:13px;">プレーオフを有効にする</span>
+    </label>
+    <div style="font-size:12px;color:var(--muted);">
+      自動昇格：上位${pN}チーム<br>
+      PO参加：${pN+1}位〜${pN+(po.playoffN||2)}位
+      ${rows.slice(pN,pN+(po.playoffN||2)).map(r=>`<strong>${r.team}</strong>`).join('、')}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <span style="font-size:12px;color:var(--muted);">PO対象：</span>
+      <input type="number" min="2" max="8" value="${po.playoffN||2}" style="width:60px;padding:5px 8px;"
+        onchange="updatePON('${yr}',${div},+this.value)">
+      <span style="font-size:12px;color:var(--muted);">チーム</span>
+    </div>
+  </div></div>`;
+
+  if(po.enabled){
+    const poTeams=rows.slice(pN,pN+(po.playoffN||2));
+    if(po.matches.length===0&&poTeams.length>=2){
+      initPOMatches(yr,div,poTeams.map(r=>r.team));
+      return renderPlayoff();
+    }
+    html+=`<div class="slbl">トーナメント</div>`;
+    const rounds=[...new Set(po.matches.map(m=>m.round))].sort((a,b)=>a-b);
+    rounds.forEach(rnd=>{
+      const rms=po.matches.filter(m=>m.round===rnd);
+      const rName=rnd===Math.max(...rounds)?'決勝':rnd===Math.max(...rounds)-1?'準決勝':`第${rnd}ラウンド`;
+      html+=`<div class="slbl">${rName}</div>`;
+      rms.forEach(m=>{
+        const aW=m.played&&m.scoreA>m.scoreB,bW=m.played&&m.scoreB>m.scoreA;
+        html+=`<div class="card"><div class="po-match">
+          <div class="po-team ${aW?'winner':m.played?'loser':''}">
+            <span>${m.teamA||'未定'}</span>
+            ${m.teamA?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="psa-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
+          </div>
+          <div class="po-team ${bW?'winner':m.played?'loser':''}">
+            <span>${m.teamB||'未定'}</span>
+            ${m.teamB?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="psb-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
+          </div>
+        </div></div>`;
+      });
+    });
+    if(po.winner){
+      html+=`<div class="card" style="text-align:center;padding:20px;background:var(--g2);border-color:var(--g);">
+        <div style="font-size:24px;">🏆</div>
+        <div style="font-size:16px;font-weight:700;color:var(--g);margin-top:6px;">昇格PO優勝</div>
+        <div style="font-size:18px;font-weight:700;margin-top:4px;">${po.winner}</div>
+      </div>`;
+    }
+  }
+  document.getElementById('playoff-area').innerHTML=html;
+}
+
+function togglePO(yr,div,enabled){
+  const d=getDivData(yr,div);if(!d)return;
+  if(!d.playoff)d.playoff={enabled:false,playoffN:4,matches:[],winner:null};
+  d.playoff.enabled=enabled;save(db);renderPlayoff();
+}
+
+function updatePON(yr,div,n){
+  const d=getDivData(yr,div);if(!d)return;
+  d.playoff.playoffN=n;d.playoff.matches=[];d.playoff.winner=null;save(db);renderPlayoff();
+}
+
+function initPOMatches(yr,div,teams){
+  const d=getDivData(yr,div);if(!d)return;
+  const n=teams.length,slots=Math.pow(2,Math.ceil(Math.log2(n)));
+  const padded=[...teams,...Array(slots-n).fill(null)];
+  const ms=[];let id=0;
+  for(let i=0;i<slots/2;i++) ms.push({id:id++,round:1,teamA:padded[i],teamB:padded[slots-1-i],scoreA:null,scoreB:null,played:false});
+  let prev=slots/2,rnd=2;
+  while(prev>1){for(let i=0;i<prev/2;i++)ms.push({id:id++,round:rnd,teamA:null,teamB:null,scoreA:null,scoreB:null,played:false});prev/=2;rnd++;}
+  d.playoff.matches=ms;save(db);
+}
+
+function savePO(yr,div,id){
+  const sa=parseInt(document.getElementById(`psa-${id}`)?.value);
+  const sb=parseInt(document.getElementById(`psb-${id}`)?.value);
+  if(isNaN(sa)||isNaN(sb))return;
+  if(sa===sb){alert('POは引き分けなし');return;}
+  const d=getDivData(yr,div);if(!d)return;
+  const m=d.playoff.matches.find(x=>x.id===id);if(!m)return;
+  m.scoreA=sa;m.scoreB=sb;m.played=true;
+  const winner=sa>sb?m.teamA:m.teamB;
+  const myIdx=d.playoff.matches.filter(x=>x.round===m.round).indexOf(m);
+  const nextMs=d.playoff.matches.filter(x=>x.round===m.round+1);
+  const nxt=nextMs[Math.floor(myIdx/2)];
+  if(nxt){if(myIdx%2===0)nxt.teamA=winner;else nxt.teamB=winner;}
+  else d.playoff.winner=winner;
+  save(db);renderPlayoff();
+}
+
+// ══ 過去データ フォーム入力 ══
+function setTeamRows(){
+  const n = parseInt(document.getElementById('pi-count').value) || 10;
+  const wrap = document.getElementById('pi-rows');
+  // 既存の値を退避
+  const old = {};
+  wrap.querySelectorAll('.pi-row').forEach(row=>{
+    const rank = row.dataset.rank;
+    old[rank] = {
+      team: row.querySelector('.pi-team').value,
+      pts:  row.querySelector('.pi-pts').value,
+    };
+  });
+  let html = `<div style="display:grid;grid-template-columns:32px 1fr 72px;gap:4px;margin-bottom:4px;padding:0 2px;">
+    <span style="font-size:11px;color:var(--muted);text-align:center;">#</span>
+    <span style="font-size:11px;color:var(--muted);">チーム名</span>
+    <span style="font-size:11px;color:var(--muted);text-align:center;">勝ち点</span>
+  </div>`;
+  for(let i = 1; i <= n; i++){
+    const prev = old[i] || {team:'', pts:''};
+    const rankColor = i===1?'var(--gold)':i===2?'#90a4ae':i===3?'#ff8a65':'var(--muted)';
+    html += `<div class="pi-row" data-rank="${i}" style="display:grid;grid-template-columns:32px 1fr 72px;gap:4px;margin-bottom:4px;">
+      <div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${rankColor};">${i}</div>
+      <input class="pi-team" type="text" value="${prev.team}" placeholder="チーム名"
+        style="padding:7px 9px;font-size:13px;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext(this);}">
+      <input class="pi-pts" type="number" value="${prev.pts}" placeholder="pt" min="0"
+        style="padding:7px 6px;font-size:13px;text-align:center;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext(this);}">
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  // 最初のチーム名にフォーカス
+  wrap.querySelector('.pi-team')?.focus();
+}
+
+function focusNext(el){
+  const all = [...document.getElementById('pi-rows').querySelectorAll('input')];
+  const idx = all.indexOf(el);
+  if(idx >= 0 && idx < all.length - 1) all[idx+1].focus();
+  else savePastEntry();
+}
+
+function savePastEntry(){
+  const year = parseInt(document.getElementById('pi-year').value);
+  const div  = parseInt(document.getElementById('pi-div').value);
+  const msg  = document.getElementById('import-msg');
+
+  if(!year){ msg.style.color='var(--red)'; msg.textContent='年度を入力してください'; return; }
+
+  const rows = [...document.getElementById('pi-rows').querySelectorAll('.pi-row')];
+  const standings = [];
+  rows.forEach(row=>{
+    const team = row.querySelector('.pi-team').value.trim();
+    const pts  = row.querySelector('.pi-pts').value;
+    if(!team) return;
+    standings.push({
+      rank: parseInt(row.dataset.rank),
+      team,
+      pts: pts !== '' ? parseInt(pts) : null,
+    });
+  });
+
+  if(!standings.length){ msg.style.color='var(--red)'; msg.textContent='チーム名を入力してください'; return; }
+
+  const yr = year;
+  db.seasons[yr] = db.seasons[yr] || {divisions:{}};
+  db.seasons[yr].divisions = db.seasons[yr].divisions || {};
+  if(!db.seasons[yr].divisions[String(div)]){
+    db.seasons[yr].divisions[String(div)] = {
+      teams: standings.map(s=>s.team),
+      matches: [], started: false, promoteN:AUTO_PROMOTE_N, relegateN:AUTO_RELEGATE_N,
+      playoff: {enabled:false,playoffN:2,matches:[],winner:null},
+      past_standings: standings
+    };
+  } else {
+    db.seasons[yr].divisions[String(div)].past_standings = standings;
+    db.seasons[yr].divisions[String(div)].teams = standings.map(s=>s.team);
+  }
+  standings.forEach(s=>{
+    if(!db.teams[s.team]) db.teams[s.team]={div,active:true};
+  });
+
+  save(db);
+  refreshSeasonSelects();
+  msg.style.color='var(--g)';
+  msg.textContent=`✓ ${year}年目 ${getDivName(div)} ${standings.length}チームを保存しました`;
+  setTimeout(()=>msg.textContent='', 3000);
+}
+
+function exportCurrentData(){
+  const json = JSON.stringify(db, null, 2);
+  // テキストをコピー
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(json).then(()=>{
+      const msg = document.getElementById('import-msg');
+      msg.style.color='var(--muted)';
+      msg.textContent='✓ クリップボードにコピーしました（バックアップ用）';
+      setTimeout(()=>msg.textContent='', 3000);
+    });
+  }
+}
+
+// ══ ユーティリティ ══
+function sorted(arr){ return [...arr].sort(); }
+
+// 順位取得（past_standings優先、なければcalcStandings）
+function getStandings(yr, div){
+  const d = getDivData(yr, div);
+  if(!d) return [];
+  // past_standings があればそちらを使う
+  if(d.past_standings && d.past_standings.length){
+    return d.past_standings.map((s,i)=>({...s, rank: s.rank||i+1, pts: s.pts||null}));
+  }
+  return calcStandings(yr, div);
+}
+
+// ══════════════════════════════════
+// ELOレーティング
+// ══════════════════════════════════
+const ELO_BASE = 1500;
+const ELO_K = 24;
+const ELO_HOME_ADV = 50; // ホームアドバンテージ
+
+// 全試合を時系列（年度→leg→round）で並べてELOを再計算
+function calcAllElo(){
+  const elo = {}; // team -> rating
+  const history = {}; // team -> [{yr,div,round,leg,rating}]
+  const getR = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
+
+  const seasons = getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
+  seasons.forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      const matches = [...d.matches].filter(m=>m.played)
+        .sort((a,b)=>a.leg-b.leg||a.round-b.round||a.id-b.id);
+      matches.forEach(m=>{
+        const h=m.home, a=m.away;
+        const Rh=getR(h), Ra=getR(a);
+        const Eh = 1/(1+Math.pow(10,-(Rh+ELO_HOME_ADV-Ra)/400));
+        const Ea = 1-Eh;
+        let Sh;
+        if(m.home_score>m.away_score) Sh=1;
+        else if(m.home_score<m.away_score) Sh=0;
+        else Sh=0.5;
+        const Sa = 1-Sh;
+        // 得失点差で補正（大差勝ちはKを上げる）
+        const gd = Math.abs(m.home_score - m.away_score);
+        const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
+        const newRh = Rh + ELO_K*gMult*(Sh-Eh);
+        const newRa = Ra + ELO_K*gMult*(Sa-Ea);
+        elo[h]=newRh; elo[a]=newRa;
+        history[h]=history[h]||[]; history[h].push({yr,div,round:m.round,leg:m.leg,rating:newRh});
+        history[a]=history[a]||[]; history[a].push({yr,div,round:m.round,leg:m.leg,rating:newRa});
+      });
+    });
+  });
+  return {elo, history};
+}
+
+// 全チームの現在順位を取得（最新シーズンでの所属部門・順位）
+function getCurrentRankInfo(team){
+  const seasons = getSeasons().slice().sort((a,b)=>parseInt(b)-parseInt(a)); // 新しい順
+  for(const yr of seasons){
+    const divisions = db.seasons[yr]?.divisions || {};
+    for(const divStr of Object.keys(divisions)){
+      const d = divisions[divStr];
+      if(d.teams && d.teams.includes(team)){
+        const rows = calcStandings(yr, parseInt(divStr));
+        const found = rows.find(r=>r.team===team);
+        if(found){
+          return { yr, div: parseInt(divStr), rank: found.rank, total: rows.length };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function getEloTableAll(){
+  const {elo, history} = calcAllElo();
+  const teams = Object.entries(db.teams).filter(([_,t])=>t.active).map(([n])=>n);
+  const rows = teams.map(t=>{
+    const r = elo[t]!==undefined?elo[t]:ELO_BASE;
+    const hist = history[t]||[];
+    const prev = hist.length>=2 ? hist[hist.length-2].rating : ELO_BASE;
+    const delta = hist.length ? r - prev : 0;
+    const curInfo = getCurrentRankInfo(t);
+    return {
+      team:t, rating:Math.round(r), delta:Math.round(delta), games:hist.length,
+      curDiv: curInfo?curInfo.div:null,
+      curRank: curInfo?curInfo.rank:null,
+      curTotal: curInfo?curInfo.total:null,
+    };
+  });
+  rows.sort((a,b)=>b.rating-a.rating);
+  rows.forEach((r,i)=>r.rank=i+1);
+  return rows;
+}
+
+// ELOによるモンテカルロ順位予測（残り試合をシミュレート）
+function predictStandings(yr, div, simulations=300){
+  const d = getDivData(yr, div);
+  if(!d) return [];
+  const {elo} = calcAllElo();
+  const getR = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
+
+  const teams = d.teams;
+  const playedMatches = d.matches.filter(m=>m.played);
+  const remainingMatches = d.matches.filter(m=>!m.played);
+
+  // 現在の実績ポイントを計算
+  const baseStats = {};
+  teams.forEach(t=>baseStats[t]={pts:0,gf:0,ga:0});
+  playedMatches.forEach(m=>{
+    const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
+    baseStats[h].gf+=hs; baseStats[h].ga+=as_;
+    baseStats[a].gf+=as_; baseStats[a].ga+=hs;
+    if(hs>as_) baseStats[h].pts+=3;
+    else if(hs<as_) baseStats[a].pts+=3;
+    else { baseStats[h].pts++; baseStats[a].pts++; }
+  });
+
+  if(!remainingMatches.length){
+    // 残り試合なし = 確定順位
+    const rows = calcStandings(yr,div);
+    const n = rows.length;
+    return rows.map(r=>({...r, avgRank:r.rank,
+      promoteProb: null, playoffProb: null,
+      relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null
+    }));
+  }
+
+  const rankCounts = {}; // team -> [0,0,0,...] count per rank
+  teams.forEach(t=>rankCounts[t]=new Array(teams.length).fill(0));
+
+  for(let s=0; s<simulations; s++){
+    const stats = {};
+    teams.forEach(t=>stats[t]={pts:baseStats[t].pts, gd:baseStats[t].gf-baseStats[t].ga, gf:baseStats[t].gf});
+    remainingMatches.forEach(m=>{
+      const h=m.home, a=m.away;
+      const Rh=getR(h), Ra=getR(a);
+      const Eh = 1/(1+Math.pow(10,-(Rh+ELO_HOME_ADV-Ra)/400));
+      const rnd = Math.random();
+      // 引き分け確率を挟んだ3値化
+      const drawP = 0.24;
+      if(rnd < Eh*(1-drawP)){ stats[h].pts+=3; stats[h].gd+=1; stats[a].gd-=1; }
+      else if(rnd < Eh*(1-drawP)+drawP){ stats[h].pts++; stats[a].pts++; }
+      else { stats[a].pts+=3; stats[a].gd+=1; stats[h].gd-=1; }
+    });
+    const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
+    ranked.forEach((t,i)=>rankCounts[t][i]++);
+  }
+
+  const n = teams.length;
+  const pN = div>1 ? AUTO_PROMOTE_N : 0;
+  const poRange = d.playoff?.enabled ? (d.playoff.playoffN||4) : 0;
+  const rN = div<3 ? AUTO_RELEGATE_N : 0;
+
+  const result = teams.map(t=>{
+    const counts = rankCounts[t];
+    let sum=0; counts.forEach((c,i)=>sum+=c*(i+1));
+    const avgRank = sum/simulations;
+    let promoteCount=0, playoffCount=0, relegateCount=0;
+    counts.forEach((c,i)=>{
+      const rank=i+1;
+      if(div>1 && rank<=pN) promoteCount+=c;
+      if(div>1 && rank>pN && rank<=pN+poRange) playoffCount+=c;
+      if(div<3 && rank > n-rN) relegateCount+=c;
+    });
+    return {
+      team:t,
+      avgRank: Math.round(avgRank*10)/10,
+      promoteProb: div>1 ? Math.round(promoteCount/simulations*100) : null,
+      playoffProb: div>1 && poRange ? Math.round(playoffCount/simulations*100) : null,
+      relegateProb: div<3 ? Math.round(relegateCount/simulations*100) : null,
+      currentPts: baseStats[t].pts,
+      elo: Math.round(getR(t)),
+    };
+  });
+  result.sort((a,b)=>a.avgRank-b.avgRank);
+  result.forEach((r,i)=>r.predRank=i+1);
+  return result;
+}
+
+// ══════════════════════════════════
+// ELO予測タブ
+// ══════════════════════════════════
+function renderPredict(){
+  const yr = document.getElementById('pr-yr').value;
+  const div = curDiv.predict;
+  const el = document.getElementById('predict-area');
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+
+  // ELOランキング表示（全チーム・部門分けなし）
+  const eloRows = getEloTableAll();
+
+  let html = `<div class="slbl">現在のELOレーティング（全チーム）</div><div class="card">`;
+  if(!eloRows.length){
+    html += `<div class="loading">データなし</div>`;
+  } else {
+    html += `<table class="stbl"><thead><tr><th>#</th><th>チーム</th><th>ELO</th><th>増減</th><th>現在順位</th></tr></thead><tbody>`;
+    eloRows.forEach((r,i)=>{
+      const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
+      const dColor = r.delta>0?'color:var(--g)':r.delta<0?'color:var(--red)':'color:var(--muted)';
+      const dSign = r.delta>0?'+':'';
+      const divColor = r.curDiv ? ['','#f5a623','#00a854','#0288d1'][r.curDiv] : 'var(--muted)';
+      const curRankStr = r.curRank ? `<span style="color:${divColor};font-weight:700;">${getDivName(r.curDiv)} ${r.curRank}位</span>` : '<span style="color:var(--muted);">—</span>';
+      html += `<tr><td><span class="rn ${rc}">${r.rank}</span></td><td>${r.team}</td>
+        <td style="font-weight:700;">${r.rating}</td>
+        <td style="${dColor};font-size:12px;">${r.games?dSign+r.delta:'—'}</td>
+        <td style="font-size:11px;">${curRankStr}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  html += `</div>`;
+
+  // 予想順位表
+  const pred = predictStandings(yr, div);
+  const d = getDivData(yr, div);
+  const hasRemaining = d && d.matches.some(m=>!m.played);
+
+  html += `<div class="slbl">${hasRemaining?'シミュレーション予想順位（残り試合をELOで予測）':'最終順位（全試合終了）'}</div><div class="card">`;
+  if(!pred.length){
+    html += `<div class="loading">データなし</div>`;
+  } else {
+    html += `<table class="stbl"><thead><tr><th>#</th><th>チーム</th><th>現PT</th>${div>1?'<th>昇格率</th>':''}${div>1?'<th>PO率</th>':''}${div<3?'<th>降格率</th>':''}</tr></thead><tbody>`;
+    pred.forEach((r,i)=>{
+      const rank = r.predRank || r.rank;
+      const rc = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+      const promoBg = r.promoteProb!==null && r.promoteProb>=50 ? 'row-p' : '';
+      const poBg = r.playoffProb!==null && r.playoffProb>=50 && r.promoteProb<50 ? 'row-r' : '';
+      const relBg = r.relegateProb!==null && r.relegateProb>=50 ? 'row-r' : '';
+      const relColor = r.relegateProb!==null ? (r.relegateProb>=50?'color:var(--red);font-weight:700;':r.relegateProb>=20?'color:var(--red);':'color:var(--muted);') : '';
+      html += `<tr class="${promoBg||poBg||relBg}">
+        <td><span class="rn ${rc}">${rank}</span></td>
+        <td>${r.team}</td>
+        <td>${r.currentPts!==undefined?r.currentPts:'—'}</td>
+        ${div>1?`<td>${r.promoteProb!==null?r.promoteProb+'%':'—'}</td>`:''}
+        ${div>1?`<td>${r.playoffProb!==null?r.playoffProb+'%':'—'}</td>`:''}
+        ${div<3?`<td style="${relColor}">${r.relegateProb!==null?r.relegateProb+'%':'—'}</td>`:''}
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  html += `</div>`;
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+    ※ ELOはホームアドバンテージ・得失点差を加味した独自レーティングです。予測は残り試合をランダムシミュレーション（300回）した平均順位です。<br>
+    昇格＝1〜2位、PO＝3〜6位（プレーオフ経由の追加昇格枠）、降格＝下位3チームです。
+  </p>`;
+
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════
+// 昇格・PO自動判定（順位表・PO画面で使用する共通関数）
+// ══════════════════════════════════
+function getPromoStatus(rank, total, promoteN, poEnabled, poN){
+  // 戻り値: 'promote' | 'playoff' | null
+  if(rank <= promoteN) return 'promote';
+  if(poEnabled && rank > promoteN && rank <= promoteN + poN) return 'playoff';
+  return null;
+}
+
+init();
+</script>
+</body>
+</html>
