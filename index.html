@@ -159,28 +159,42 @@ canvas{display:block;max-width:100%;}
   </div>
 
   <div class="card">
-    <div class="card-hdr">📂 過去データの読み込み</div>
+    <div class="card-hdr">📂 過去データの入力</div>
     <div class="card-body">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
-        過去のシーズン順位データをJSON形式で貼り付けると歴代タブに反映されます。<br>
-        既存のデータは上書きされません（追記されます）。
-      </p>
-      <div class="field">
-        <label>JSONを貼り付け</label>
-        <textarea id="import-json" placeholder='[
-  {
-    "year": 2020,
-    "div": 1,
-    "standings": [
-      {"rank": 1, "team": "FC東京"},
-      {"rank": 2, "team": "浦和レッズ"}
-    ]
-  }
-]' style="min-height:140px;font-size:12px;font-family:monospace;"></textarea>
+
+      <!-- 年度・部門選択 -->
+      <div class="row" style="margin-bottom:10px;">
+        <div class="field" style="margin:0;flex:1;">
+          <label>年度</label>
+          <input type="number" id="pi-year" placeholder="例: 2020" min="2000" max="2099">
+        </div>
+        <div class="field" style="margin:0;flex:1;">
+          <label>部門</label>
+          <select id="pi-div">
+            <option value="1">1部</option>
+            <option value="2">2部</option>
+            <option value="3">3部</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0;flex:0 0 auto;align-self:flex-end;">
+          <button class="btn btn-sub btn-sm" onclick="setTeamRows()">チーム数設定</button>
+        </div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-g btn-sm" onclick="importPastData()">✚ 読み込む</button>
-        <button class="btn btn-sub btn-sm" onclick="exportCurrentData()">📤 現在のデータを書き出す</button>
+
+      <!-- チーム数 -->
+      <div class="row" style="margin-bottom:12px;align-items:center;">
+        <label style="font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap;">チーム数：</label>
+        <input type="number" id="pi-count" value="10" min="2" max="30" style="width:70px;flex:0 0 auto;">
+        <button class="btn btn-sub btn-sm" onclick="setTeamRows()">行を作成</button>
+      </div>
+
+      <!-- 入力行 -->
+      <div id="pi-rows"></div>
+
+      <!-- ボタン -->
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-g btn-sm" onclick="savePastEntry()">✚ このシーズンを保存</button>
+        <button class="btn btn-sub btn-sm" onclick="exportCurrentData()">📤 データ書き出し</button>
       </div>
       <div id="import-msg" style="font-size:12px;margin-top:8px;"></div>
     </div>
@@ -980,65 +994,107 @@ function savePO(yr,div,id){
   save(db);renderPlayoff();
 }
 
-// ══ 過去データ読み込み・書き出し ══
-function importPastData(){
-  const raw = document.getElementById('import-json').value.trim();
-  const msg = document.getElementById('import-msg');
-  if(!raw){ msg.style.color='var(--red)'; msg.textContent='JSONを入力してください'; return; }
-  let data;
-  try{ data = JSON.parse(raw); }
-  catch(e){ msg.style.color='var(--red)'; msg.textContent='JSONの形式が正しくありません'; return; }
-  if(!Array.isArray(data)){ msg.style.color='var(--red)'; msg.textContent='配列形式で入力してください'; return; }
+// ══ 過去データ フォーム入力 ══
+function setTeamRows(){
+  const n = parseInt(document.getElementById('pi-count').value) || 10;
+  const wrap = document.getElementById('pi-rows');
+  // 既存の値を退避
+  const old = {};
+  wrap.querySelectorAll('.pi-row').forEach(row=>{
+    const rank = row.dataset.rank;
+    old[rank] = {
+      team: row.querySelector('.pi-team').value,
+      pts:  row.querySelector('.pi-pts').value,
+    };
+  });
+  let html = `<div style="display:grid;grid-template-columns:32px 1fr 72px;gap:4px;margin-bottom:4px;padding:0 2px;">
+    <span style="font-size:11px;color:var(--muted);text-align:center;">#</span>
+    <span style="font-size:11px;color:var(--muted);">チーム名</span>
+    <span style="font-size:11px;color:var(--muted);text-align:center;">勝ち点</span>
+  </div>`;
+  for(let i = 1; i <= n; i++){
+    const prev = old[i] || {team:'', pts:''};
+    const rankColor = i===1?'var(--gold)':i===2?'#90a4ae':i===3?'#ff8a65':'var(--muted)';
+    html += `<div class="pi-row" data-rank="${i}" style="display:grid;grid-template-columns:32px 1fr 72px;gap:4px;margin-bottom:4px;">
+      <div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${rankColor};">${i}</div>
+      <input class="pi-team" type="text" value="${prev.team}" placeholder="チーム名"
+        style="padding:7px 9px;font-size:13px;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext(this);}">
+      <input class="pi-pts" type="number" value="${prev.pts}" placeholder="pt" min="0"
+        style="padding:7px 6px;font-size:13px;text-align:center;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext(this);}">
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  // 最初のチーム名にフォーカス
+  wrap.querySelector('.pi-team')?.focus();
+}
 
-  let added = 0;
-  data.forEach(entry=>{
-    const yr = String(entry.year);
-    const div = String(entry.div);
-    if(!yr||!div||!entry.standings) return;
-    // seasons に年度がなければ作成
-    db.seasons[yr] = db.seasons[yr] || {divisions:{}};
-    db.seasons[yr].divisions = db.seasons[yr].divisions || {};
-    // 既存データがあれば past_standings だけ更新、なければ past のみのエントリを作成
-    if(!db.seasons[yr].divisions[div]){
-      db.seasons[yr].divisions[div] = {
-        teams: entry.standings.map(s=>s.team),
-        matches: [],
-        started: false,
-        promoteN: 1,
-        relegateN: 1,
-        playoff: {enabled:false,playoffN:2,matches:[],winner:null},
-        past_standings: entry.standings  // 順位のみ保存
-      };
-    } else {
-      db.seasons[yr].divisions[div].past_standings = entry.standings;
-    }
-    // teamsにも登録（未登録のみ）
-    entry.standings.forEach(s=>{
-      if(s.team && !db.teams[s.team]){
-        db.teams[s.team] = {div: parseInt(div), active: true};
-      }
+function focusNext(el){
+  const all = [...document.getElementById('pi-rows').querySelectorAll('input')];
+  const idx = all.indexOf(el);
+  if(idx >= 0 && idx < all.length - 1) all[idx+1].focus();
+  else savePastEntry();
+}
+
+function savePastEntry(){
+  const year = parseInt(document.getElementById('pi-year').value);
+  const div  = parseInt(document.getElementById('pi-div').value);
+  const msg  = document.getElementById('import-msg');
+
+  if(!year || year < 2000){ msg.style.color='var(--red)'; msg.textContent='年度を入力してください'; return; }
+
+  const rows = [...document.getElementById('pi-rows').querySelectorAll('.pi-row')];
+  const standings = [];
+  rows.forEach(row=>{
+    const team = row.querySelector('.pi-team').value.trim();
+    const pts  = row.querySelector('.pi-pts').value;
+    if(!team) return;
+    standings.push({
+      rank: parseInt(row.dataset.rank),
+      team,
+      pts: pts !== '' ? parseInt(pts) : null,
     });
-    added++;
+  });
+
+  if(!standings.length){ msg.style.color='var(--red)'; msg.textContent='チーム名を入力してください'; return; }
+
+  const yr = String(year);
+  db.seasons[yr] = db.seasons[yr] || {divisions:{}};
+  db.seasons[yr].divisions = db.seasons[yr].divisions || {};
+  if(!db.seasons[yr].divisions[String(div)]){
+    db.seasons[yr].divisions[String(div)] = {
+      teams: standings.map(s=>s.team),
+      matches: [], started: false, promoteN:1, relegateN:1,
+      playoff: {enabled:false,playoffN:2,matches:[],winner:null},
+      past_standings: standings
+    };
+  } else {
+    db.seasons[yr].divisions[String(div)].past_standings = standings;
+    db.seasons[yr].divisions[String(div)].teams = standings.map(s=>s.team);
+  }
+  standings.forEach(s=>{
+    if(!db.teams[s.team]) db.teams[s.team]={div,active:true};
   });
 
   save(db);
   refreshSeasonSelects();
-  document.getElementById('import-json').value='';
   msg.style.color='var(--g)';
-  msg.textContent=`✓ ${added}件のシーズンデータを読み込みました`;
+  msg.textContent=`✓ ${year}年 ${getDivName(div)} ${standings.length}チームを保存しました`;
   setTimeout(()=>msg.textContent='', 3000);
 }
 
 function exportCurrentData(){
-  // 現在のDBをコピー用にエクスポート
   const json = JSON.stringify(db, null, 2);
-  // テキストエリアに表示
-  const ta = document.getElementById('import-json');
-  ta.value = json;
-  ta.select();
-  const msg = document.getElementById('import-msg');
-  msg.style.color='var(--muted)';
-  msg.textContent='↑ 上のテキストをコピーしてバックアップできます';
+  // テキストをコピー
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(json).then(()=>{
+      const msg = document.getElementById('import-msg');
+      msg.style.color='var(--muted)';
+      msg.textContent='✓ クリップボードにコピーしました（バックアップ用）';
+      setTimeout(()=>msg.textContent='', 3000);
+    });
+  }
 }
 
 // ══ ユーティリティ ══
