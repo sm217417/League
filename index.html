@@ -602,7 +602,7 @@ function startSeason(div){
   const yr=parseInt(document.getElementById('s-yr').value);
   const pn=parseInt(document.getElementById('s-pn').value)||1;
   const rn=parseInt(document.getElementById('s-rn').value)||1;
-  if(!yr||yr<2000){alert('年度を入力してください');return;}
+  if(!yr||yr<0){alert('年度を入力してください');return;}
   const teams=Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
   if(teams.length<2){alert(`チームが不足しています（${teams.length}チーム）`);return;}
   if(!confirm(`${yr}年 ${getDivName(div)}\n${teams.length}チームで開始しますか？`))return;
