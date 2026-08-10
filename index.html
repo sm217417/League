@@ -1446,7 +1446,7 @@ function getEloTableAll(){
 }
 
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
-function predictStandings(yr, div, simulations=500){
+function predictStandings(yr, div, simulations=300){
   const d = getDivData(yr, div);
   if(!d) return [];
   const {elo} = calcAllElo();
@@ -1473,8 +1473,11 @@ function predictStandings(yr, div, simulations=500){
     const rows = calcStandings(yr,div);
     const n = rows.length;
     return rows.map(r=>({...r, avgRank:r.rank,
-      promoteProb: null, playoffProb: null,
-      relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null
+      promoteProb: null,
+      playoffProb: div>1 ? (r.rank <= AUTO_PROMOTE_N + (d.playoff?.playoffN||4) ? 100 : 0) : null,
+      relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null,
+      winProb: div===1 ? (r.rank===1 ? 100 : 0) : null,
+      best8Prob: div===1 ? (r.rank<=8 ? 100 : 0) : null,
     }));
   }
 
@@ -1508,12 +1511,14 @@ function predictStandings(yr, div, simulations=500){
     const counts = rankCounts[t];
     let sum=0; counts.forEach((c,i)=>sum+=c*(i+1));
     const avgRank = sum/simulations;
-    let promoteCount=0, playoffCount=0, relegateCount=0;
+    let promoteCount=0, playoffCount=0, relegateCount=0, winCount=0, best8Count=0;
     counts.forEach((c,i)=>{
       const rank=i+1;
       if(div>1 && rank<=pN) promoteCount+=c;
-      if(div>1 && rank>pN && rank<=pN+poRange) playoffCount+=c;
+      if(div>1 && rank<=pN+poRange) playoffCount+=c;  // 1〜6位（自動昇格枠含む）
       if(div<3 && rank > n-rN) relegateCount+=c;
+      if(div===1 && rank===1) winCount+=c;
+      if(div===1 && rank<=8) best8Count+=c;
     });
     return {
       team:t,
@@ -1521,6 +1526,8 @@ function predictStandings(yr, div, simulations=500){
       promoteProb: div>1 ? Math.round(promoteCount/simulations*100) : null,
       playoffProb: div>1 && poRange ? Math.round(playoffCount/simulations*100) : null,
       relegateProb: div<3 ? Math.round(relegateCount/simulations*100) : null,
+      winProb: div===1 ? Math.round(winCount/simulations*100) : null,
+      best8Prob: div===1 ? Math.round(best8Count/simulations*100) : null,
       currentPts: baseStats[t].pts,
       elo: Math.round(getR(t)),
     };
@@ -1539,10 +1546,54 @@ function renderPredict(){
   const el = document.getElementById('predict-area');
   if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
 
-  // ELOランキング表示（全チーム・部門分けなし）
+  // 予想順位表（先に表示）
+  const pred = predictStandings(yr, div);
+  const d = getDivData(yr, div);
+  const hasRemaining = d && d.matches.some(m=>!m.played);
+
+  let html = `<div class="slbl">${hasRemaining?'シミュレーション予想順位（残り試合をELOで予測）':'最終順位（全試合終了）'}</div><div class="card">`;
+  if(!pred.length){
+    html += `<div class="loading">データなし</div>`;
+  } else {
+    html += `<div style="overflow-x:auto;"><table class="stbl"><thead><tr>
+      <th>#</th><th>チーム</th><th>現PT</th>
+      ${div>1?'<th>昇格率</th>':''}
+      ${div>1?'<th>PO率<br><span style="font-size:9px;font-weight:400;">(1-6位)</span></th>':''}
+      ${div<3?'<th>降格率</th>':''}
+      ${div===1?'<th>優勝率</th>':''}
+      ${div===1?'<th>ベスト8率</th>':''}
+    </tr></thead><tbody>`;
+    pred.forEach((r,i)=>{
+      const rank = r.predRank || r.rank;
+      const rc = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+      const promoBg = r.promoteProb!==null && r.promoteProb>=50 ? 'row-p' : '';
+      const poBg = r.playoffProb!==null && r.playoffProb>=50 && (r.promoteProb===null||r.promoteProb<50) ? 'row-r' : '';
+      const relBg = r.relegateProb!==null && r.relegateProb>=50 ? 'row-r' : '';
+      const relColor = r.relegateProb!==null ? (r.relegateProb>=50?'color:var(--red);font-weight:700;':r.relegateProb>=20?'color:var(--red);':'color:var(--muted);') : '';
+      const winColor = r.winProb!==null && r.winProb>=10 ? 'color:var(--gold);font-weight:700;' : '';
+      html += `<tr class="${promoBg||poBg||relBg}">
+        <td><span class="rn ${rc}">${rank}</span></td>
+        <td>${r.team}</td>
+        <td>${r.currentPts!==undefined?r.currentPts:'—'}</td>
+        ${div>1?`<td>${r.promoteProb!==null?r.promoteProb+'%':'—'}</td>`:''}
+        ${div>1?`<td>${r.playoffProb!==null?r.playoffProb+'%':'—'}</td>`:''}
+        ${div<3?`<td style="${relColor}">${r.relegateProb!==null?r.relegateProb+'%':'—'}</td>`:''}
+        ${div===1?`<td style="${winColor}">${r.winProb!==null?r.winProb+'%':'—'}</td>`:''}
+        ${div===1?`<td>${r.best8Prob!==null?r.best8Prob+'%':'—'}</td>`:''}
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+  html += `</div>`;
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+    ※ 予測は残り試合をランダムシミュレーション（300回）した結果です。<br>
+    昇格＝1〜2位、PO率＝1〜6位（自動昇格枠含む）、降格＝下位3チームです。
+  </p>`;
+
+  // ELOランキング表示（全チーム・部門分けなし・予想順位表の下に表示）
   const eloRows = getEloTableAll();
 
-  let html = `<div class="slbl">現在のELOレーティング（全チーム）</div><div class="card">`;
+  html += `<div class="slbl">現在のELOレーティング（全チーム）</div><div class="card">`;
   if(!eloRows.length){
     html += `<div class="loading">データなし</div>`;
   } else {
@@ -1561,39 +1612,8 @@ function renderPredict(){
     html += `</tbody></table>`;
   }
   html += `</div>`;
-
-  // 予想順位表
-  const pred = predictStandings(yr, div);
-  const d = getDivData(yr, div);
-  const hasRemaining = d && d.matches.some(m=>!m.played);
-
-  html += `<div class="slbl">${hasRemaining?'シミュレーション予想順位（残り試合をELOで予測）':'最終順位（全試合終了）'}</div><div class="card">`;
-  if(!pred.length){
-    html += `<div class="loading">データなし</div>`;
-  } else {
-    html += `<table class="stbl"><thead><tr><th>#</th><th>チーム</th><th>現PT</th>${div>1?'<th>昇格率</th>':''}${div>1?'<th>PO率</th>':''}${div<3?'<th>降格率</th>':''}</tr></thead><tbody>`;
-    pred.forEach((r,i)=>{
-      const rank = r.predRank || r.rank;
-      const rc = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
-      const promoBg = r.promoteProb!==null && r.promoteProb>=50 ? 'row-p' : '';
-      const poBg = r.playoffProb!==null && r.playoffProb>=50 && r.promoteProb<50 ? 'row-r' : '';
-      const relBg = r.relegateProb!==null && r.relegateProb>=50 ? 'row-r' : '';
-      const relColor = r.relegateProb!==null ? (r.relegateProb>=50?'color:var(--red);font-weight:700;':r.relegateProb>=20?'color:var(--red);':'color:var(--muted);') : '';
-      html += `<tr class="${promoBg||poBg||relBg}">
-        <td><span class="rn ${rc}">${rank}</span></td>
-        <td>${r.team}</td>
-        <td>${r.currentPts!==undefined?r.currentPts:'—'}</td>
-        ${div>1?`<td>${r.promoteProb!==null?r.promoteProb+'%':'—'}</td>`:''}
-        ${div>1?`<td>${r.playoffProb!==null?r.playoffProb+'%':'—'}</td>`:''}
-        ${div<3?`<td style="${relColor}">${r.relegateProb!==null?r.relegateProb+'%':'—'}</td>`:''}
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-  }
-  html += `</div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ ELOはホームアドバンテージ・得失点差を加味した独自レーティングです。予測は残り試合をランダムシミュレーション（500回）した平均順位です。<br>
-    昇格＝1〜2位、PO＝3〜6位（プレーオフ経由の追加昇格枠）、降格＝下位3チームです。
+    ※ ELOはホームアドバンテージ・得失点差を加味した独自レーティングです。
   </p>`;
 
   el.innerHTML = html;
@@ -1612,4 +1632,5 @@ function getPromoStatus(rank, total, promoteN, poEnabled, poN){
 init();
 </script>
 </body>
+</html>
 </html>
