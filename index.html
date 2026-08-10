@@ -1446,7 +1446,7 @@ function getEloTableAll(){
 }
 
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
-function predictStandings(yr, div, simulations=300){
+function predictStandings(yr, div, simulations=500){
   const d = getDivData(yr, div);
   if(!d) return [];
   const {elo} = calcAllElo();
@@ -1592,7 +1592,7 @@ function renderPredict(){
   }
   html += `</div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ ELOはホームアドバンテージ・得失点差を加味した独自レーティングです。予測は残り試合をランダムシミュレーション（300回）した平均順位です。<br>
+    ※ ELOはホームアドバンテージ・得失点差を加味した独自レーティングです。予測は残り試合をランダムシミュレーション（500回）した平均順位です。<br>
     昇格＝1〜2位、PO＝3〜6位（プレーオフ経由の追加昇格枠）、降格＝下位3チームです。
   </p>`;
 
