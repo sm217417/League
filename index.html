@@ -1446,7 +1446,7 @@ function getEloTableAll(){
 }
 
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
-function predictStandings(yr, div, simulations=300){
+function predictStandings(yr, div, simulations=5000){
   const d = getDivData(yr, div);
   if(!d) return [];
   const {elo} = calcAllElo();
@@ -1586,7 +1586,7 @@ function renderPredict(){
   }
   html += `</div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ 予測は残り試合をランダムシミュレーション（300回）した結果です。<br>
+    ※ 予測は残り試合をランダムシミュレーション（5000回）した結果です。<br>
     昇格＝1〜2位、PO率＝1〜6位（自動昇格枠含む）、降格＝下位3チームです。
   </p>`;
 
