@@ -20,9 +20,9 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:#f5f7fa;color:#1
 }
 /* ボトムナビ */
 .bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid var(--border);display:flex;height:58px;}
-.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;color:var(--muted);font-size:9px;border:none;background:none;padding:4px 0;min-width:0;}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;color:var(--muted);font-size:8px;border:none;background:none;padding:3px 0;min-width:0;overflow:hidden;white-space:nowrap;}
 .bnav-btn.active{color:var(--g);}
-.bnav-icon{font-size:17px;line-height:1;}
+.bnav-icon{font-size:15px;line-height:1;}
 /* ページ */
 .page{display:none;}
 .page.active{display:block;}
@@ -101,6 +101,10 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 canvas{display:block;max-width:100%;}
 /* PO */
 .po-match{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0;}
+.cup-seed-badge{display:inline-block;font-size:9px;font-weight:700;background:var(--gold2);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;}
+.cup-div-badge{display:inline-block;font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;}
+.cup-round-collapse{display:none;}
+.cup-round-collapse.open{display:block;}
 .po-team{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;}
 .po-team:last-child{border-bottom:none;}
 .po-team.winner{background:var(--g2);color:var(--g);}
@@ -293,6 +297,17 @@ canvas{display:block;max-width:100%;}
   <div id="playoff-area"></div>
 </div>
 
+<!-- カップ戦 -->
+<div class="page" id="pg-cup">
+  <div class="phdr">
+    <div class="ptitle">🏅 カップ戦</div>
+    <div style="display:flex;gap:6px;margin-top:7px;">
+      <select id="cup-yr" style="font-size:13px;padding:6px 8px;" onchange="renderCup()"></select>
+    </div>
+  </div>
+  <div id="cup-area"></div>
+</div>
+
 <!-- ELO予測 -->
 <div class="page" id="pg-predict">
   <div class="phdr">
@@ -314,15 +329,21 @@ canvas{display:block;max-width:100%;}
   <button class="bnav-btn" onclick="go('h2h',this)"><span class="bnav-icon">🆚</span>対戦</button>
   <button class="bnav-btn" onclick="go('history',this)"><span class="bnav-icon">📈</span>歴代</button>
   <button class="bnav-btn" onclick="go('playoff',this)"><span class="bnav-icon">🏆</span>PO</button>
+  <button class="bnav-btn" onclick="go('cup',this)"><span class="bnav-icon">🏅</span>カップ</button>
   <button class="bnav-btn" onclick="go('predict',this)"><span class="bnav-icon">🔮</span>予測</button>
 </nav>
 
 <script>
 // ══ DB (localStorage) ══
 const KEY = 'winner-final-v1';
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY))||init_db(); }catch(e){ return init_db(); } }
+function load(){
+  let d;
+  try{ d = JSON.parse(localStorage.getItem(KEY))||init_db(); }catch(e){ d = init_db(); }
+  if(!d.cups) d.cups = {};
+  return d;
+}
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"} }, elo:{} }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"} }, elo:{}, cups:{} }; }
 
 // ══ 状態 ══
 let db = load();
@@ -355,7 +376,7 @@ function refreshSeasonSelects(){
   const seasons = getSeasons();
   const opts = seasons.map(y=>`<option value="${y}">${y}年目</option>`).join('');
   const empty = '<option value="">—</option>';
-  ['home-yr','m-yr','po-yr','pr-yr','del-yr'].forEach(id=>{
+  ['home-yr','m-yr','po-yr','pr-yr','del-yr','cup-yr'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.innerHTML = opts||empty;
   });
@@ -371,6 +392,7 @@ function go(name, btn){
   if(name==='history') switchHistTab(histTab, document.querySelector('#pg-history .tab.active'));
   if(name==='playoff') renderPlayoff();
   if(name==='predict') renderPredictPage();
+  if(name==='cup') renderCup();
 }
 
 // ══ 部門タブ ══
@@ -457,6 +479,13 @@ function genMatches(teams){
   return result;
 }
 
+// leg・roundから通し節番号を計算（1回戦の最大節数を基準にオフセット）
+function getContinuousRound(matches, leg, round){
+  if(leg===1) return round;
+  const maxRound1 = Math.max(...matches.filter(m=>m.leg===1).map(m=>m.round), 0);
+  return maxRound1 + round;
+}
+
 // ══ 試合入力 ══
 function loadMatches(){
   const yr = document.getElementById('m-yr').value;
@@ -470,7 +499,11 @@ function loadMatches(){
     const[al,ar]=a.split('-').map(Number),[bl,br]=b.split('-').map(Number);return al-bl||ar-br;
   });
   const sel=document.getElementById('m-round');
-  sel.innerHTML='<option value="all">全節</option>'+rounds.map(k=>{const[l,r]=k.split('-');return`<option value="${k}">${l}回戦 第${r}節</option>`;}).join('');
+  sel.innerHTML='<option value="all">全節</option>'+rounds.map(k=>{
+    const[l,r]=k.split('-').map(Number);
+    const cr = getContinuousRound(matches, l, r);
+    return `<option value="${k}">第${cr}節</option>`;
+  }).join('');
   renderMatches();
 }
 
@@ -490,8 +523,9 @@ function renderMatches(){
   if(!keys.length){document.getElementById('matches-area').innerHTML='<div class="loading">該当なし</div>';return;}
   let html='';
   keys.forEach(k=>{
-    const[l,r]=k.split('-');
-    html+=`<div class="rlbl">${l}回戦　第${r}節</div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
+    const[l,r]=k.split('-').map(Number);
+    const cr = getContinuousRound(data, l, r);
+    html+=`<div class="rlbl">第${cr}節</div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
     groups[k].forEach(m=>{
       const hs=m.home_score!==null?m.home_score:'',as_=m.away_score!==null?m.away_score:'';
       html+=`<div class="mcard"><div class="mteam home">${m.home}</div>
@@ -1142,10 +1176,6 @@ function drawTrend(seasons, teamCombined, bands){
           flushPath();
         }
         pathPts.push({x,y});
-        ctx.beginPath();
-        ctx.fillStyle = c;
-        ctx.arc(x, y, 2, 0, Math.PI*2);
-        ctx.fill();
         lastPt = {x,y};
         prevYr = yr;
       } else {
@@ -1192,7 +1222,7 @@ function computeInseasonSnapshots(yr, div){
     });
     const ranked = Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
     ranked.forEach((rr,i)=>rr.rank=i+1);
-    return { leg:l, round:r, ranks: Object.fromEntries(ranked.map(rr=>[rr.team, rr.rank])) };
+    return { leg:l, round:r, cround: getContinuousRound(matches, l, r), ranks: Object.fromEntries(ranked.map(rr=>[rr.team, rr.rank])) };
   });
 
   return { snaps, allTeams, played };
@@ -1257,7 +1287,7 @@ function drawIsChart(snaps,allTeams){
   snaps.forEach((s,i)=>{
     if(i%labelStep!==0 && i!==n-1) return;
     ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';
-    ctx.fillText(`${s.leg}-${s.round}`,xs(i),220-pb+10);
+    ctx.fillText(`第${s.cround}節`,xs(i),220-pb+10);
   });
   allTeams.forEach((t,ti)=>{
     if(!isSel.has(t))return;
@@ -1370,6 +1400,267 @@ function savePO(yr,div,id){
   if(nxt){if(myIdx%2===0)nxt.teamA=winner;else nxt.teamB=winner;}
   else d.playoff.winner=winner;
   save(db);renderPlayoff();
+}
+
+// ══════════════════════════════════
+// カップ戦（ルヴァンカップ方式）
+// ══════════════════════════════════
+const CUP_SEED_COUNT = 8; // シード枠数
+
+// 標準的なトーナメントシード配置順を返す（例：n=8 → [1,8,4,5,2,7,3,6]）
+function seedOrder(n){
+  let result = [1];
+  let sz = 1;
+  while(sz < n){
+    const next = [];
+    sz *= 2;
+    result.forEach(s=>{
+      next.push(s);
+      next.push(sz+1-s);
+    });
+    result = next;
+  }
+  return result;
+}
+
+// 配列をシャッフル（Fisher-Yates）
+function shuffleArr(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function getCup(yr){ return db.cups[String(yr)] || null; }
+
+// カップ戦を新規作成：ELO上位8チームをシード、残りは1部/2部/3部から均等にランダム抽選
+function createCup(yr, size){
+  const eloRows = getEloTableAll();
+  if(eloRows.length < CUP_SEED_COUNT){
+    alert('チーム数が不足しています（ELOランキングに最低8チーム必要）');
+    return;
+  }
+  const seeds = eloRows.slice(0, CUP_SEED_COUNT).map(r=>r.team);
+  const seedSet = new Set(seeds);
+
+  const remaining = size - CUP_SEED_COUNT;
+  if(remaining < 0){
+    alert(`トーナメント規模はシード数（${CUP_SEED_COUNT}）以上にしてください`);
+    return;
+  }
+
+  // 部門ごとのプール（シード済みチームを除く）
+  const pools = {1:[],2:[],3:[]};
+  Object.entries(db.teams).forEach(([name,info])=>{
+    if(info.active && !seedSet.has(name)) pools[info.div].push(name);
+  });
+
+  // 均等割り当て（余りは1部→2部→3部の順に+1）
+  const base = Math.floor(remaining/3);
+  const extra = remaining%3;
+  const alloc = {1: base+(extra>0?1:0), 2: base+(extra>1?1:0), 3: base};
+
+  // プール不足時は他部門から補填
+  let shortfall = 0;
+  [1,2,3].forEach(d=>{
+    if(pools[d].length < alloc[d]){
+      shortfall += alloc[d]-pools[d].length;
+      alloc[d] = pools[d].length;
+    }
+  });
+  if(shortfall>0){
+    // 余裕のある部門から順に埋める
+    for(const d of [1,2,3]){
+      const capacity = pools[d].length - alloc[d];
+      if(capacity<=0) continue;
+      const take = Math.min(capacity, shortfall);
+      alloc[d]+=take; shortfall-=take;
+      if(shortfall<=0) break;
+    }
+  }
+  if(shortfall>0){
+    alert(`チーム数が不足しています（あと${shortfall}チーム足りません）。トーナメント規模を小さくしてください。`);
+    return;
+  }
+
+  const unseeded = [];
+  [1,2,3].forEach(d=>{
+    const picked = shuffleArr(pools[d]).slice(0, alloc[d]);
+    picked.forEach(t=>unseeded.push({team:t, div:d}));
+  });
+  const unseededShuffled = shuffleArr(unseeded);
+
+  // ブラケットスロットへ配置（標準シード順）
+  const order = seedOrder(size);
+  const slots = new Array(size);
+  let uIdx = 0;
+  order.forEach((seedNum, i)=>{
+    if(seedNum <= CUP_SEED_COUNT){
+      const team = seeds[seedNum-1];
+      slots[i] = {team, div: db.teams[team]?.div||1, seed: seedNum};
+    } else {
+      const picked = unseededShuffled[uIdx++];
+      slots[i] = {team: picked.team, div: picked.div, seed: null};
+    }
+  });
+
+  // 1回戦の組み合わせ生成
+  const matches = [];
+  let id=0;
+  for(let i=0;i<size/2;i++){
+    matches.push({
+      id:id++, round:1,
+      teamA:slots[i*2].team, teamB:slots[i*2+1].team,
+      divA:slots[i*2].div, divB:slots[i*2+1].div,
+      seedA:slots[i*2].seed, seedB:slots[i*2+1].seed,
+      scoreA:null, scoreB:null, played:false
+    });
+  }
+  let prev=size/2, rnd=2;
+  while(prev>1){
+    for(let i=0;i<prev/2;i++){
+      matches.push({id:id++, round:rnd, teamA:null, teamB:null, divA:null, divB:null, seedA:null, seedB:null, scoreA:null, scoreB:null, played:false});
+    }
+    prev/=2; rnd++;
+  }
+
+  db.cups[String(yr)] = {
+    size, seeds, participants: slots, matches, winner:null, winnerDiv:null,
+  };
+  save(db);
+  renderCup();
+}
+
+function deleteCup(yr){
+  if(!confirm(`${yr}年目のカップ戦を削除します。よろしいですか？`)) return;
+  delete db.cups[String(yr)];
+  save(db);
+  renderCup();
+}
+
+function saveCupMatch(yr, id){
+  const sa=parseInt(document.getElementById(`csa-${id}`)?.value);
+  const sb=parseInt(document.getElementById(`csb-${id}`)?.value);
+  if(isNaN(sa)||isNaN(sb))return;
+  if(sa===sb){alert('カップ戦は引き分けなし（PK等で決着した想定でスコアを入力してください）');return;}
+  const cup=getCup(yr); if(!cup) return;
+  const m=cup.matches.find(x=>x.id===id); if(!m) return;
+  m.scoreA=sa; m.scoreB=sb; m.played=true;
+  const winnerIsA = sa>sb;
+  const winner = winnerIsA?m.teamA:m.teamB;
+  const winnerDiv = winnerIsA?m.divA:m.divB;
+  const winnerSeed = winnerIsA?m.seedA:m.seedB;
+
+  const myIdx = cup.matches.filter(x=>x.round===m.round).indexOf(m);
+  const nextMs = cup.matches.filter(x=>x.round===m.round+1);
+  const nxt = nextMs[Math.floor(myIdx/2)];
+  if(nxt){
+    if(myIdx%2===0){ nxt.teamA=winner; nxt.divA=winnerDiv; nxt.seedA=winnerSeed; }
+    else{ nxt.teamB=winner; nxt.divB=winnerDiv; nxt.seedB=winnerSeed; }
+  } else {
+    cup.winner = winner;
+    cup.winnerDiv = winnerDiv;
+  }
+  save(db);
+  renderCup();
+}
+
+function renderCup(){
+  const yr = document.getElementById('cup-yr').value;
+  const el = document.getElementById('cup-area');
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+
+  const cup = getCup(yr);
+
+  if(!cup){
+    // 新規作成フォーム
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-hdr">🏅 新規カップ戦を作成</div>
+        <div class="card-body">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
+            現在のELOレーティング上位<strong>8チーム</strong>がシードとして自動配置されます。<br>
+            残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。
+          </p>
+          <div class="field">
+            <label>トーナメント規模</label>
+            <select id="cup-size">
+              <option value="16">16チーム</option>
+              <option value="32" selected>32チーム</option>
+              <option value="64">64チーム</option>
+            </select>
+          </div>
+          <button class="btn btn-g btn-full" onclick="createCup('${yr}', +document.getElementById('cup-size').value)">🎲 抽選してカップ戦を作成</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const div_names_short = ['','1部','2部','3部'];
+  const divColor = d => ['','var(--d1)','var(--d2)','var(--d3)'][d]||'var(--muted)';
+
+  let html = `<div class="card">
+    <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:12px;color:var(--muted);">参加${cup.size}チーム（シード${CUP_SEED_COUNT}）</div>
+      <button class="btn btn-sm" style="background:var(--red2);color:var(--red);border:1px solid #ffcdd2;" onclick="deleteCup('${yr}')">🗑️ 削除してやり直す</button>
+    </div>
+  </div>`;
+
+  // シード一覧
+  html += `<div class="slbl">シード（ELO上位8）</div><div class="card"><div style="padding:6px 13px;">`;
+  cup.seeds.forEach((t,i)=>{
+    const d = db.teams[t]?.div;
+    html += `<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;">
+      <span style="width:24px;color:var(--gold);font-weight:700;">${i+1}</span>
+      <span style="flex:1;font-weight:700;">${t}</span>
+      <span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]||'—'}</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // トーナメント表
+  html += `<div class="slbl">トーナメント表</div>`;
+  const rounds = [...new Set(cup.matches.map(m=>m.round))].sort((a,b)=>a-b);
+  const maxRound = Math.max(...rounds);
+  rounds.forEach(rnd=>{
+    const rms = cup.matches.filter(m=>m.round===rnd);
+    const rName = rnd===maxRound?'決勝':rnd===maxRound-1?'準決勝':rnd===maxRound-2?'準々決勝':`${rnd}回戦`;
+    html += `<div class="slbl">${rName}</div>`;
+    rms.forEach(m=>{
+      const aW = m.played && m.scoreA>m.scoreB;
+      const bW = m.played && m.scoreB>m.scoreA;
+      const teamLabel = (name, d, seed) => {
+        if(!name) return '<span>未定</span>';
+        let badge = '';
+        if(seed) badge += `<span class="cup-seed-badge">SEED${seed}</span>`;
+        if(d) badge += `<span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]}</span>`;
+        return `<span>${name}${badge}</span>`;
+      };
+      html += `<div class="card"><div class="po-match">
+        <div class="po-team ${aW?'winner':m.played?'loser':''}">
+          ${teamLabel(m.teamA, m.divA, m.seedA)}
+          ${m.teamA?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+        </div>
+        <div class="po-team ${bW?'winner':m.played?'loser':''}">
+          ${teamLabel(m.teamB, m.divB, m.seedB)}
+          ${m.teamB?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+        </div>
+      </div></div>`;
+    });
+  });
+
+  if(cup.winner){
+    html += `<div class="card" style="text-align:center;padding:24px;background:var(--gold2);border-color:var(--gold);">
+      <div style="font-size:30px;">🏆</div>
+      <div style="font-size:16px;font-weight:700;color:var(--gold);margin-top:6px;">カップ戦優勝</div>
+      <div style="font-size:20px;font-weight:700;margin-top:6px;">${cup.winner}</div>
+      <div style="margin-top:4px;"><span class="cup-div-badge" style="background:${divColor(cup.winnerDiv)}22;color:${divColor(cup.winnerDiv)};">${div_names_short[cup.winnerDiv]}</span></div>
+    </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // ══ 過去データ フォーム入力 ══
@@ -1883,4 +2174,5 @@ function getPromoStatus(rank, total, promoteN, poEnabled, poN){
 init();
 </script>
 </body>
+</html>
 </html>
