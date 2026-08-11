@@ -1041,8 +1041,7 @@ function drawTrend(seasons,allTeams,teamRanks){
     const c=PAL[ti%PAL.length];
     const pts=seasons.map((yr,i)=>teamRanks[t]?.[yr]!=null?{x:xs(i),y:ys(teamRanks[t][yr]),r:teamRanks[t][yr]}:null);
     const valid=pts.filter(Boolean);
-    if(valid.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=2;ctx.moveTo(valid[0].x,valid[0].y);valid.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
-    valid.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();});
+    if(valid.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=1;ctx.moveTo(valid[0].x,valid[0].y);valid.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
     if(valid.length){const last=valid[valid.length-1];ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText(t,last.x+7,last.y+4);}
   });
 }
