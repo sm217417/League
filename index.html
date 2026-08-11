@@ -986,36 +986,23 @@ function renderHistTrend(){
   const allSeasons=getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
   if(allSeasons.length<2){document.getElementById('history-area').innerHTML='<div class="loading">2シーズン以上必要です</div>';return;}
 
-  // 部門ごとのデータを構築（各部門で実際にデータのある年度のみ）
-  const segments = [];
-  [1,2,3].forEach(div=>{
-    if(!trendDivSel.has(div)) return;
-    const seasons = allSeasons.filter(yr=>getDivData(yr,div));
-    if(!seasons.length) return;
-    const teamRanks = {};
-    seasons.forEach(yr=>{
-      calcStandings(yr,div).forEach(r=>{
-        if(!teamRanks[r.team]) teamRanks[r.team]={};
-        teamRanks[r.team][yr]=r.rank;
-      });
-    });
-    segments.push({div, seasons, teamRanks});
-  });
+  // 部門ごとの帯（バンド）を構築：1部=1〜n1位、2部=n1+1〜n1+n2位 …
+  const bands = buildTrendBands(allSeasons);
 
-  let html=`<div class="slbl">部門を選択（複数選択可）</div><div class="tabs" style="padding:0 12px 9px;">`;
+  let html=`<div class="slbl">部門を選択（複数選択可・縦に連結表示）</div><div class="tabs" style="padding:0 12px 9px;">`;
   [1,2,3].forEach(d=>{
     const on = trendDivSel.has(d);
     html+=`<div class="tab ${on?'active':''}" onclick="toggleTrendDiv(${d})">${getDivName(d)}</div>`;
   });
   html+=`</div>`;
 
-  if(!segments.length){
+  if(!bands.length){
     html+=`<div class="loading">部門を選択してください</div>`;
     document.getElementById('history-area').innerHTML=html; return;
   }
 
-  // 全チーム一覧（フィルター用）
-  const allTeams = [...new Set(segments.flatMap(s=>Object.keys(s.teamRanks)))];
+  const {teamCombined, usedSeasons} = buildTrendCombinedRanks(allSeasons, bands);
+  const allTeams = Object.keys(teamCombined);
   if(!trendSel.size)trendSel=new Set(allTeams.slice(0,8));
 
   html+=`<div class="tfilter">`;
@@ -1024,9 +1011,44 @@ function renderHistTrend(){
     html+=`<button class="tchip ${on?'on':''}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
       onclick="toggleTrend('${t.replace(/'/g,"\\'")}',this,'${c}')">${t}</button>`;
   });
-  html+=`</div><div class="card chart-wrap"><canvas id="trend-cv" height="220"></canvas></div>`;
+  html+=`</div><div class="card chart-wrap"><canvas id="trend-cv" height="${Math.min(420, 140+bands.reduce((s,b)=>s+b.size,0)*8)}"></canvas></div>`;
   document.getElementById('history-area').innerHTML=html;
-  setTimeout(()=>drawTrend(segments, allTeams),50);
+  setTimeout(()=>drawTrend(usedSeasons, teamCombined, bands),50);
+}
+
+// 部門ごとのバンド（サイズ・オフセット）を作る。選択中の部門のみ。1部→2部→3部の順に積む。
+function buildTrendBands(allSeasons){
+  const bands = [];
+  let offset = 0;
+  [1,2,3].forEach(div=>{
+    if(!trendDivSel.has(div)) return;
+    let maxTeams = 0;
+    allSeasons.forEach(yr=>{
+      const d = getDivData(yr,div);
+      if(d && d.teams) maxTeams = Math.max(maxTeams, d.teams.length);
+    });
+    if(!maxTeams) return;
+    bands.push({div, size:maxTeams, offset});
+    offset += maxTeams;
+  });
+  return bands;
+}
+
+// 各チーム・各年度の「結合順位」（部門オフセット込み）を計算
+function buildTrendCombinedRanks(allSeasons, bands){
+  const teamCombined = {}; // team -> {yr: combinedRank}
+  bands.forEach(b=>{
+    allSeasons.forEach(yr=>{
+      const d = getDivData(yr, b.div);
+      if(!d) return;
+      calcStandings(yr, b.div).forEach(r=>{
+        teamCombined[r.team] = teamCombined[r.team] || {};
+        teamCombined[r.team][yr] = b.offset + r.rank;
+      });
+    });
+  });
+  // データが存在する年度のみに絞る（全部門で欠けている年は除外しなくてよい：連続性判定は年度番号ベースなので問題なし）
+  return { teamCombined, usedSeasons: allSeasons };
 }
 
 function toggleTrendDiv(d){
@@ -1044,128 +1066,91 @@ function toggleTrend(t,el,c){
   else{el.style.background='';el.style.color=c;el.style.borderColor=c;}
 
   const allSeasons=getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
-  const segments = [];
-  [1,2,3].forEach(div=>{
-    if(!trendDivSel.has(div)) return;
-    const seasons = allSeasons.filter(yr=>getDivData(yr,div));
-    if(!seasons.length) return;
-    const teamRanks = {};
-    seasons.forEach(yr=>{
-      calcStandings(yr,div).forEach(r=>{
-        if(!teamRanks[r.team]) teamRanks[r.team]={};
-        teamRanks[r.team][yr]=r.rank;
-      });
-    });
-    segments.push({div, seasons, teamRanks});
-  });
-  const allTeams = [...new Set(segments.flatMap(s=>Object.keys(s.teamRanks)))];
-  drawTrend(segments, allTeams);
+  const bands = buildTrendBands(allSeasons);
+  const {teamCombined, usedSeasons} = buildTrendCombinedRanks(allSeasons, bands);
+  drawTrend(usedSeasons, teamCombined, bands);
 }
 
-// segments: [{div, seasons:[yr,...], teamRanks:{team:{yr:rank}}}]
-// 部門ごとにX軸を連結し、部門の切れ目に太い区切り線を入れる。
-// 各部門内でも、年度が連続していない箇所は線を繋がない。
-function drawTrend(segments, allTeams){
+// X軸＝時系列（年度）固定。Y軸＝部門ごとの帯を縦に連結（2部は21〜40位のように下に積む）。
+// 年度が連続していない箇所は線を繋がない。
+function drawTrend(seasons, teamCombined, bands){
   const cv=document.getElementById('trend-cv');if(!cv)return;
-  const W=cv.offsetWidth||300;cv.width=W;cv.height=220;
-  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,220);
-  const pl=40,pr=80,pt=24,pb=30,gw=W-pl-pr,gh=220-pt-pb;
-
-  // 全セグメントのスロット数（各年度1スロット）を数え、連番のxインデックスを割り当てる
-  const slots = []; // {div, yr, segIndex}
-  segments.forEach((seg,si)=>{
-    seg.seasons.forEach(yr=>slots.push({div:seg.div, yr, segIndex:si}));
-  });
-  const n = slots.length;
-  const maxR = Math.max(...allTeams.flatMap(t=>
-    segments.flatMap(seg=>Object.values(seg.teamRanks[t]||{}))
-  ), 4);
+  const H = cv.height || 220;
+  const W=cv.offsetWidth||300;cv.width=W;
+  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
+  const pl=44,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=H-pt-pb;
+  const n = seasons.length;
+  const totalSpan = bands.reduce((s,b)=>s+b.size,0);
 
   const xs=i=>pl+gw*i/Math.max(n-1,1);
-  const ys=r=>pt+gh*(r-1)/Math.max(maxR-1,1);
+  const ys=combinedRank=>pt+gh*(combinedRank-1)/Math.max(totalSpan-1,1);
 
-  // 横グリッド（順位）
+  // 横グリッド（1位刻みは多すぎるので5刻み目安で）
+  const rankStep = totalSpan>40 ? 5 : totalSpan>20 ? 2 : 1;
   ctx.strokeStyle='#eee';ctx.lineWidth=1;
-  for(let r=1;r<=maxR;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
+  for(let r=1;r<=totalSpan;r+=rankStep){
+    ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();
+    ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='right';
+    ctx.fillText(r+'位',pl-4,ys(r)+3);
+  }
 
-  // 部門の区切り太線 + カテゴリラベル
-  let segStartIdx = 0;
-  segments.forEach((seg,si)=>{
-    const segLen = seg.seasons.length;
-    const startX = xs(segStartIdx);
-    const endX = xs(segStartIdx+segLen-1);
-    // カテゴリラベル（セグメント中央上部）
-    ctx.fillStyle='#6b7c93'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(getDivName(seg.div), (startX+endX)/2, pt-10);
-    // 区切り太線（最初のセグメント以外の左端に）
-    if(si>0){
-      const bx = xs(segStartIdx) - (gw/Math.max(n-1,1))/2;
+  // 部門バンドの区切り太線 + ラベル（右側に部門名を縦の帯として表示）
+  bands.forEach((b,bi)=>{
+    const topY = ys(b.offset+1);
+    const botY = ys(b.offset+b.size);
+    // 区切り線（バンドの下端、最後のバンド以外）
+    if(bi < bands.length-1){
       ctx.strokeStyle='#c8d2e0'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(bx, pt-4); ctx.lineTo(bx, 220-pb+4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pl-4, botY); ctx.lineTo(W-pr+4, botY); ctx.stroke();
     }
-    segStartIdx += segLen;
+    // バンドラベル（右端）
+    ctx.fillStyle='#6b7c93'; ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(getDivName(b.div), W-pr+8, (topY+botY)/2+3);
   });
 
   // X軸ラベル（年度）— 密集する場合は間引き
   const labelStep = Math.max(1, Math.ceil(n/14));
-  slots.forEach((s,i)=>{
+  seasons.forEach((yr,i)=>{
     if(i%labelStep!==0 && i!==n-1) return;
     ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';
-    ctx.fillText(s.yr,xs(i),220-pb+12);
+    ctx.fillText(yr,xs(i),H-pb+12);
   });
 
-  // チームの線（部門ごと・年度が連続する箇所のみ線を繋ぐ）
-  allTeams.forEach((t,ti)=>{
+  // チームの線（年度が連続する箇所のみ線を繋ぐ。部門またぎでも年度が連続していれば繋がる＝昇降格の軌跡が見える）
+  const teams = Object.keys(teamCombined);
+  teams.forEach((t,ti)=>{
     if(!trendSel.has(t))return;
     const c=PAL[ti%PAL.length];
 
-    let idx = 0;
-    segments.forEach(seg=>{
-      // このセグメント内でのポイント収集（年度・連続性を保持）
-      let runStart = -1;
-      let prevYr = null;
-      let pathPts = [];
+    let prevYr=null, pathPts=[], lastPt=null;
+    const flushPath=()=>{
+      if(pathPts.length>=2){
+        ctx.beginPath(); ctx.strokeStyle=c; ctx.lineWidth=1.3;
+        ctx.moveTo(pathPts[0].x,pathPts[0].y);
+        pathPts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
+        ctx.stroke();
+      }
+      pathPts=[];
+    };
 
-      const flushPath = ()=>{
-        if(pathPts.length>=2){
-          ctx.beginPath(); ctx.strokeStyle=c; ctx.lineWidth=1.3;
-          ctx.moveTo(pathPts[0].x,pathPts[0].y);
-          pathPts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
-          ctx.stroke();
-        }
-        pathPts = [];
-      };
-
-      seg.seasons.forEach((yr,i)=>{
-        const rank = seg.teamRanks[t]?.[yr];
-        const x = xs(idx+i);
-        if(rank!=null){
-          const y = ys(rank);
-          // 前年度と連続していなければ線を切る
-          if(prevYr!==null && parseInt(yr)-parseInt(prevYr)!==1){
-            flushPath();
-          }
-          pathPts.push({x,y});
-          prevYr = yr;
-        } else {
+    seasons.forEach((yr,i)=>{
+      const val = teamCombined[t]?.[yr];
+      const x = xs(i);
+      if(val!=null){
+        const y = ys(val);
+        if(prevYr!==null && parseInt(yr)-parseInt(prevYr)!==1){
           flushPath();
-          prevYr = null;
         }
-      });
-      flushPath();
-
-      idx += seg.seasons.length;
+        pathPts.push({x,y});
+        lastPt = {x,y};
+        prevYr = yr;
+      } else {
+        flushPath();
+        prevYr = null;
+      }
     });
+    flushPath();
 
-    // 最終ラベル（最後にデータが存在した位置）
-    let lastPt = null, lastIdx=0;
-    segments.forEach(seg=>{
-      seg.seasons.forEach((yr,i)=>{
-        const rank = seg.teamRanks[t]?.[yr];
-        if(rank!=null){ lastPt = {x:xs(lastIdx+i), y:ys(rank)}; }
-      });
-      lastIdx += seg.seasons.length;
-    });
     if(lastPt){
       ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';
       ctx.fillText(t,lastPt.x+6,lastPt.y+4);
