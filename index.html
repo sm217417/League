@@ -1142,6 +1142,10 @@ function drawTrend(seasons, teamCombined, bands){
           flushPath();
         }
         pathPts.push({x,y});
+        ctx.beginPath();
+        ctx.fillStyle = c;
+        ctx.arc(x, y, 2, 0, Math.PI*2);
+        ctx.fill();
         lastPt = {x,y};
         prevYr = yr;
       } else {
