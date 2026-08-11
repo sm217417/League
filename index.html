@@ -1148,7 +1148,6 @@ function drawIsChart(snaps,allTeams){
     const c=PAL[ti%PAL.length];
     const pts=snaps.map((s,i)=>s.ranks[t]!=null?{x:xs(i),y:ys(s.ranks[t])}:null).filter(Boolean);
     if(pts.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=1;ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
-    pts.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();});
     if(pts.length){const last=pts[pts.length-1];ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText(t,last.x+6,last.y+4);}
   });
 }
