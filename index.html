@@ -1442,14 +1442,16 @@ function createCup(yr, size){
     alert('チーム数が不足しています（ELOランキングに最低8チーム必要）');
     return;
   }
+  if(size < CUP_SEED_COUNT){
+    alert(`参加チーム数はシード数（${CUP_SEED_COUNT}）以上にしてください`);
+    return;
+  }
   const seeds = eloRows.slice(0, CUP_SEED_COUNT).map(r=>r.team);
   const seedSet = new Set(seeds);
 
-  const remaining = size - CUP_SEED_COUNT;
-  if(remaining < 0){
-    alert(`トーナメント規模はシード数（${CUP_SEED_COUNT}）以上にしてください`);
-    return;
-  }
+  const remaining = size - CUP_SEED_COUNT; // 実際に抽選で選ぶチーム数
+  const bracketSize = Math.pow(2, Math.ceil(Math.log2(size))); // 次の2の累乗（例：60→64）
+  const byeCount = bracketSize - size; // 不戦勝で埋める空き枠数
 
   // 部門ごとのプール（シード済みチームを除く）
   const pools = {1:[],2:[],3:[]};
@@ -1471,7 +1473,6 @@ function createCup(yr, size){
     }
   });
   if(shortfall>0){
-    // 余裕のある部門から順に埋める
     for(const d of [1,2,3]){
       const capacity = pools[d].length - alloc[d];
       if(capacity<=0) continue;
@@ -1481,56 +1482,137 @@ function createCup(yr, size){
     }
   }
   if(shortfall>0){
-    alert(`チーム数が不足しています（あと${shortfall}チーム足りません）。トーナメント規模を小さくしてください。`);
+    alert(`チーム数が不足しています（あと${shortfall}チーム足りません）。参加チーム数を減らしてください。`);
     return;
   }
 
   const unseeded = [];
   [1,2,3].forEach(d=>{
     const picked = shuffleArr(pools[d]).slice(0, alloc[d]);
-    picked.forEach(t=>unseeded.push({team:t, div:d}));
+    picked.forEach(t=>unseeded.push({team:t, div:d, bye:false}));
   });
-  const unseededShuffled = shuffleArr(unseeded);
 
-  // ブラケットスロットへ配置（標準シード順）
-  const order = seedOrder(size);
-  const slots = new Array(size);
-  let uIdx = 0;
+  // ── 不戦勝（BYE）の割り当て ──
+  // 優先度1：シード上位から順に最大8枠まで不戦勝を付与
+  const seedByeCount = Math.min(byeCount, CUP_SEED_COUNT);
+  const overflowByeCount = byeCount - seedByeCount; // シード枠で吸収しきれない分は一般枠に配置
+  const reservedByeSeeds = new Set(); // 不戦勝を得るシード番号（1〜seedByeCount）
+  for(let s=1; s<=seedByeCount; s++) reservedByeSeeds.add(s);
+
+  // ── ブラケットスロットへ配置 ──
+  const order = seedOrder(bracketSize);
+  const slots = new Array(bracketSize).fill(null);
+  const partnerIdx = i => (i%2===0 ? i+1 : i-1);
+
+  // ステップ1：シード配置
   order.forEach((seedNum, i)=>{
     if(seedNum <= CUP_SEED_COUNT){
       const team = seeds[seedNum-1];
-      slots[i] = {team, div: db.teams[team]?.div||1, seed: seedNum};
-    } else {
-      const picked = unseededShuffled[uIdx++];
-      slots[i] = {team: picked.team, div: picked.div, seed: null};
+      slots[i] = {team, div: db.teams[team]?.div||1, seed: seedNum, bye:false};
     }
   });
 
-  // 1回戦の組み合わせ生成
+  const realTeamsShuffled = shuffleArr(unseeded);
+  let realIdx = 0;
+
+  // ステップ2：シードの対戦相手を確定
+  //  - 不戦勝を得るシード → 相手スロットはBYE
+  //  - それ以外のシード → 相手スロットは実チームで埋める（ここで確定させないと空きが残るバグになる）
+  order.forEach((seedNum, i)=>{
+    if(seedNum <= CUP_SEED_COUNT){
+      const p = partnerIdx(i);
+      if(reservedByeSeeds.has(seedNum)){
+        slots[p] = {team:null, div:null, seed:null, bye:true};
+      } else {
+        const rt = realTeamsShuffled[realIdx++];
+        slots[p] = {team:rt.team, div:rt.div, seed:null, bye:false};
+      }
+    }
+  });
+
+  // ステップ3：シードが一切絡まない残りペアに、実チーム＋あふれた不戦勝を配置
+  // ※ あふれた不戦勝(overflowByeCount)は「1ペアに1つまで」となるよう、ペア単位で割り当てる
+  //   （同じペアに不戦勝が2つ入ると対戦相手不在の試合になってしまうため）
+  const remainingPairs = [];
+  for(let i=0;i<bracketSize;i+=2){
+    if(slots[i]===null && slots[i+1]===null) remainingPairs.push([i,i+1]);
+  }
+  const shuffledPairs = shuffleArr(remainingPairs);
+  const byePairIdxSet = new Set(shuffledPairs.slice(0, overflowByeCount).map(p=>p[0]));
+
+  remainingPairs.forEach(([i,j])=>{
+    if(byePairIdxSet.has(i)){
+      const byeFirst = Math.random()<0.5;
+      const byeIdx = byeFirst?i:j, realSlotIdx = byeFirst?j:i;
+      slots[byeIdx] = {team:null, div:null, seed:null, bye:true};
+      const rt = realTeamsShuffled[realIdx++];
+      slots[realSlotIdx] = {team:rt.team, div:rt.div, seed:null, bye:false};
+    } else {
+      const rt1 = realTeamsShuffled[realIdx++];
+      const rt2 = realTeamsShuffled[realIdx++];
+      slots[i] = {team:rt1.team, div:rt1.div, seed:null, bye:false};
+      slots[j] = {team:rt2.team, div:rt2.div, seed:null, bye:false};
+    }
+  });
+
+  // ── 1回戦の組み合わせ生成（不戦勝は即座に自動勝ち上がり） ──
   const matches = [];
   let id=0;
-  for(let i=0;i<size/2;i++){
-    matches.push({
+  for(let i=0;i<bracketSize/2;i++){
+    const a = slots[i*2], b = slots[i*2+1];
+    const isWalkover = a.bye !== b.bye; // どちらか一方だけが不戦勝＝ウォークオーバー
+    const m = {
       id:id++, round:1,
-      teamA:slots[i*2].team, teamB:slots[i*2+1].team,
-      divA:slots[i*2].div, divB:slots[i*2+1].div,
-      seedA:slots[i*2].seed, seedB:slots[i*2+1].seed,
-      scoreA:null, scoreB:null, played:false
-    });
+      teamA:a.team, teamB:b.team,
+      divA:a.div, divB:b.div,
+      seedA:a.seed, seedB:b.seed,
+      scoreA:null, scoreB:null,
+      played: isWalkover, walkover: isWalkover,
+    };
+    matches.push(m);
   }
-  let prev=size/2, rnd=2;
+  let prev=bracketSize/2, rnd=2;
   while(prev>1){
     for(let i=0;i<prev/2;i++){
-      matches.push({id:id++, round:rnd, teamA:null, teamB:null, divA:null, divB:null, seedA:null, seedB:null, scoreA:null, scoreB:null, played:false});
+      matches.push({id:id++, round:rnd, teamA:null, teamB:null, divA:null, divB:null, seedA:null, seedB:null, scoreA:null, scoreB:null, played:false, walkover:false});
     }
     prev/=2; rnd++;
   }
 
   db.cups[String(yr)] = {
-    size, seeds, participants: slots, matches, winner:null, winnerDiv:null,
+    size, bracketSize, seeds, participants: slots, matches, winner:null, winnerDiv:null,
   };
+
+  // 不戦勝を次ラウンドへ自動反映
+  resolveCupWalkovers(String(yr));
+
   save(db);
   renderCup();
+}
+
+// 不戦勝（ウォークオーバー）を次ラウンドへ自動的に勝ち上がらせる
+function resolveCupWalkovers(yr){
+  const cup = getCup(yr); if(!cup) return;
+  const rounds = [...new Set(cup.matches.map(m=>m.round))].sort((a,b)=>a-b);
+  rounds.forEach(rnd=>{
+    const rms = cup.matches.filter(m=>m.round===rnd);
+    rms.forEach(m=>{
+      if(m.walkover && m.played && (m.teamA===null || m.teamB===null)){
+        const winner = m.teamA || m.teamB;
+        const winnerDiv = m.divA || m.divB;
+        const winnerSeed = m.seedA || m.seedB;
+        const myIdx = rms.indexOf(m);
+        const nextMs = cup.matches.filter(x=>x.round===rnd+1);
+        const nxt = nextMs[Math.floor(myIdx/2)];
+        if(nxt){
+          if(myIdx%2===0){ nxt.teamA=winner; nxt.divA=winnerDiv; nxt.seedA=winnerSeed; }
+          else{ nxt.teamB=winner; nxt.divB=winnerDiv; nxt.seedB=winnerSeed; }
+        } else {
+          cup.winner = winner; cup.winnerDiv = winnerDiv;
+        }
+      }
+    });
+  });
 }
 
 function deleteCup(yr){
@@ -1582,15 +1664,19 @@ function renderCup(){
         <div class="card-body">
           <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
             現在のELOレーティング上位<strong>8チーム</strong>がシードとして自動配置されます。<br>
-            残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。
+            残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。<br>
+            2の累乗でないチーム数（例：60）を入力した場合、次の2の累乗まで<strong>不戦勝（BYE）</strong>で埋め、
+            不戦勝は<strong>シード上位のチームから優先的に</strong>付与されます。
           </p>
           <div class="field">
-            <label>トーナメント規模</label>
-            <select id="cup-size">
-              <option value="16">16チーム</option>
-              <option value="32" selected>32チーム</option>
-              <option value="64">64チーム</option>
-            </select>
+            <label>参加チーム数（8以上・自由入力可）</label>
+            <input type="number" id="cup-size" value="32" min="8" max="200">
+          </div>
+          <div class="tabs" style="padding:0 0 4px;">
+            <div class="tab" onclick="document.getElementById('cup-size').value=16">16</div>
+            <div class="tab" onclick="document.getElementById('cup-size').value=32">32</div>
+            <div class="tab" onclick="document.getElementById('cup-size').value=60">60</div>
+            <div class="tab" onclick="document.getElementById('cup-size').value=64">64</div>
           </div>
           <button class="btn btn-g btn-full" onclick="createCup('${yr}', +document.getElementById('cup-size').value)">🎲 抽選してカップ戦を作成</button>
         </div>
@@ -1629,23 +1715,26 @@ function renderCup(){
     const rName = rnd===maxRound?'決勝':rnd===maxRound-1?'準決勝':rnd===maxRound-2?'準々決勝':`${rnd}回戦`;
     html += `<div class="slbl">${rName}</div>`;
     rms.forEach(m=>{
-      const aW = m.played && m.scoreA>m.scoreB;
-      const bW = m.played && m.scoreB>m.scoreA;
-      const teamLabel = (name, d, seed) => {
-        if(!name) return '<span>未定</span>';
+      const aW = m.played && (m.walkover ? m.teamA!==null : m.scoreA>m.scoreB);
+      const bW = m.played && (m.walkover ? m.teamB!==null : m.scoreB>m.scoreA);
+      const teamLabel = (name, d, seed, isBye) => {
+        if(isBye) return '<span style="color:var(--muted);">BYE（不戦勝）</span>';
+        if(!name) return '<span style="color:var(--muted);">未定</span>';
         let badge = '';
         if(seed) badge += `<span class="cup-seed-badge">SEED${seed}</span>`;
         if(d) badge += `<span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]}</span>`;
         return `<span>${name}${badge}</span>`;
       };
+      const aIsBye = m.walkover && m.teamA===null;
+      const bIsBye = m.walkover && m.teamB===null;
       html += `<div class="card"><div class="po-match">
         <div class="po-team ${aW?'winner':m.played?'loser':''}">
-          ${teamLabel(m.teamA, m.divA, m.seedA)}
-          ${m.teamA?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+          ${teamLabel(m.teamA, m.divA, m.seedA, aIsBye)}
+          ${m.teamA && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
         </div>
         <div class="po-team ${bW?'winner':m.played?'loser':''}">
-          ${teamLabel(m.teamB, m.divB, m.seedB)}
-          ${m.teamB?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+          ${teamLabel(m.teamB, m.divB, m.seedB, bIsBye)}
+          ${m.teamB && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
         </div>
       </div></div>`;
     });
@@ -1820,6 +1909,31 @@ function calcAllElo(){
         history[a]=history[a]||[]; history[a].push({yr,div,round:m.round,leg:m.leg,rating:newRa});
       });
     });
+
+    // カップ戦の結果もELOに反映（不戦勝は除外・中立会場想定でホームアドバンテージなし）
+    const cup = getCup(yr);
+    if(cup && cup.matches){
+      const cupMatches = cup.matches.filter(m=>m.played && !m.walkover && m.teamA && m.teamB)
+        .sort((a,b)=>a.round-b.round||a.id-b.id);
+      cupMatches.forEach(m=>{
+        const h=m.teamA, a=m.teamB;
+        const Rh=getR(h), Ra=getR(a);
+        const Eh = 1/(1+Math.pow(10,-(Rh-Ra)/400)); // 中立会場のためホームアドバンテージなし
+        const Ea = 1-Eh;
+        let Sh;
+        if(m.scoreA>m.scoreB) Sh=1;
+        else if(m.scoreA<m.scoreB) Sh=0;
+        else Sh=0.5;
+        const Sa = 1-Sh;
+        const gd = Math.abs(m.scoreA - m.scoreB);
+        const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
+        const newRh = Rh + ELO_K*gMult*(Sh-Eh);
+        const newRa = Ra + ELO_K*gMult*(Sa-Ea);
+        elo[h]=newRh; elo[a]=newRa;
+        history[h]=history[h]||[]; history[h].push({yr,div:'cup',round:m.round,leg:0,rating:newRh});
+        history[a]=history[a]||[]; history[a].push({yr,div:'cup',round:m.round,leg:0,rating:newRa});
+      });
+    }
   });
   return {elo, history};
 }
