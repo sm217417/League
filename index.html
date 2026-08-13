@@ -305,13 +305,18 @@ canvas{display:block;max-width:100%;}
 <div class="page" id="pg-predict">
   <div class="phdr">
     <div class="ptitle">🔮 ELO予測</div>
-    <div style="display:flex;gap:6px;margin-top:7px;">
+    <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
       <select id="pr-yr" style="font-size:13px;padding:6px 8px;" onchange="renderPredictPage()"></select>
       <button class="btn btn-g btn-sm" onclick="runPrediction()">🔄 予測を更新（1万回試行）</button>
     </div>
   </div>
   <div class="tabs" id="dtabs-predict"></div>
+  <div class="tabs" style="padding-top:0;">
+    <div class="tab active" id="pr-subtab-predict" onclick="switchPredictSubtab('predict')">📊 予測</div>
+    <div class="tab" id="pr-subtab-backtest" onclick="switchPredictSubtab('backtest')">🧪 精度検証</div>
+  </div>
   <div id="predict-area"></div>
+  <div id="backtest-area" style="display:none;"></div>
 </div>
 
 <!-- ボトムナビ -->
@@ -1951,14 +1956,46 @@ function getStandings(yr, div){
 // ══════════════════════════════════
 const ELO_BASE = 1500;
 const ELO_K = 24;
-const ELO_HOME_ADV = 50; // ホームアドバンテージ
+const ELO_K_PROVISIONAL = 40; // 経験の浅いチームは変動を大きくする（暫定レーティング）
+const PROVISIONAL_GAMES = 10; // この試合数未満は暫定扱い
+const ELO_HOME_ADV_DEFAULT = 50; // データ不足時のフォールバック値
+
+// 実際の試合結果から「ホームアドバンテージ」をELOポイント換算で算出する。
+// ホーム勝率・引き分け率から、互角の相手に対するホームチームの実質勝率を求め、
+// それをELOの期待勝率の逆関数でポイントに変換する。
+function computeEmpiricalHomeAdvantage(){
+  let hw=0, dr=0, aw=0;
+  getSeasons().forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      d.matches.filter(m=>m.played).forEach(m=>{
+        if(m.home_score>m.away_score) hw++;
+        else if(m.home_score<m.away_score) aw++;
+        else dr++;
+      });
+    });
+  });
+  const total = hw+dr+aw;
+  if(total < 20) return ELO_HOME_ADV_DEFAULT; // サンプル不足時はデフォルト値を使う
+  const effectiveHomeScore = (hw + 0.5*dr) / total;
+  const clamped = Math.max(0.05, Math.min(0.95, effectiveHomeScore));
+  const HA = -400 * Math.log10(1/clamped - 1);
+  return Math.max(0, Math.min(150, HA));
+}
 
 // 全試合（リーグ戦＋カップ戦）を「実際に保存した順（playedAt）」で並べてELOを再計算。
 // これにより、カップ戦の後にリーグ戦を消化した、といった実際の時系列が正しく反映される。
+// ホームアドバンテージは過去データから実測、K値は各チームの経験試合数に応じて動的に調整する。
 function calcAllElo(){
   const elo = {}; // team -> rating
+  const gamesPlayed = {}; // team -> 消化試合数（K値の動的調整に使用）
   const history = {}; // team -> [{yr,div,round,leg,rating,playedAt}]
   const getR = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
+  const getK = t => (gamesPlayed[t]||0) < PROVISIONAL_GAMES ? ELO_K_PROVISIONAL : ELO_K;
+  const bumpGames = t => { gamesPlayed[t] = (gamesPlayed[t]||0) + 1; };
+
+  const dynamicHomeAdv = computeEmpiricalHomeAdvantage();
 
   // ── 全イベントを収集 ──
   const events = [];
@@ -1989,7 +2026,8 @@ function calcAllElo(){
     if(ev.type==='league'){
       const h=m.home, a=m.away;
       const Rh=getR(h), Ra=getR(a);
-      const Eh = 1/(1+Math.pow(10,-(Rh+ELO_HOME_ADV-Ra)/400));
+      const Kh=getK(h), Ka=getK(a);
+      const Eh = 1/(1+Math.pow(10,-(Rh+dynamicHomeAdv-Ra)/400));
       const Ea = 1-Eh;
       let Sh;
       if(m.home_score>m.away_score) Sh=1;
@@ -1998,15 +2036,17 @@ function calcAllElo(){
       const Sa = 1-Sh;
       const gd = Math.abs(m.home_score - m.away_score);
       const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
-      const newRh = Rh + ELO_K*gMult*(Sh-Eh);
-      const newRa = Ra + ELO_K*gMult*(Sa-Ea);
+      const newRh = Rh + Kh*gMult*(Sh-Eh);
+      const newRa = Ra + Ka*gMult*(Sa-Ea);
       elo[h]=newRh; elo[a]=newRa;
+      bumpGames(h); bumpGames(a);
       history[h]=history[h]||[]; history[h].push({yr:ev.yr,div:ev.div,round:m.round,leg:m.leg,rating:newRh,playedAt:ev.order});
       history[a]=history[a]||[]; history[a].push({yr:ev.yr,div:ev.div,round:m.round,leg:m.leg,rating:newRa,playedAt:ev.order});
     } else {
       // カップ戦（不戦勝は除外・中立会場想定でホームアドバンテージなし）
       const h=m.teamA, a=m.teamB;
       const Rh=getR(h), Ra=getR(a);
+      const Kh=getK(h), Ka=getK(a);
       const Eh = 1/(1+Math.pow(10,-(Rh-Ra)/400));
       const Ea = 1-Eh;
       let Sh;
@@ -2016,15 +2056,16 @@ function calcAllElo(){
       const Sa = 1-Sh;
       const gd = Math.abs(m.scoreA - m.scoreB);
       const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
-      const newRh = Rh + ELO_K*gMult*(Sh-Eh);
-      const newRa = Ra + ELO_K*gMult*(Sa-Ea);
+      const newRh = Rh + Kh*gMult*(Sh-Eh);
+      const newRa = Ra + Ka*gMult*(Sa-Ea);
       elo[h]=newRh; elo[a]=newRa;
+      bumpGames(h); bumpGames(a);
       history[h]=history[h]||[]; history[h].push({yr:ev.yr,div:'cup',round:m.round,leg:0,rating:newRh,playedAt:ev.order});
       history[a]=history[a]||[]; history[a].push({yr:ev.yr,div:'cup',round:m.round,leg:0,rating:newRa,playedAt:ev.order});
     }
   });
 
-  return {elo, history};
+  return {elo, history, dynamicHomeAdv, gamesPlayed};
 }
 
 // 全チームの現在順位を取得（最新シーズンでの所属部門・順位）
@@ -2106,9 +2147,9 @@ function getTeamTendency(yr, div, team){
   return {recentAvg, homeAvg, awayAvg};
 }
 
-// 2チームの全シーズン通算・直接対決成績
+// 2チームの全シーズン通算・直接対決成績（得点も含む）
 function getH2HStats(teamA, teamB){
-  let aWin=0, bWin=0, draw=0;
+  let aWin=0, bWin=0, draw=0, aGoals=0, bGoals=0;
   Object.values(db.seasons).forEach(season=>{
     Object.values(season.divisions||{}).forEach(d=>{
       (d.matches||[]).forEach(m=>{
@@ -2117,13 +2158,79 @@ function getH2HStats(teamA, teamB){
         const aIsHome = m.home===teamA;
         const ag = aIsHome?m.home_score:m.away_score;
         const bg = aIsHome?m.away_score:m.home_score;
+        aGoals+=ag; bGoals+=bg;
         if(ag>bg) aWin++; else if(ag<bg) bWin++; else draw++;
       });
     });
   });
   const total = aWin+bWin+draw;
   if(total < 2) return null; // サンプル不足は無視
-  return {aWinRate:aWin/total, bWinRate:bWin/total, drawRate:draw/total, total};
+  return {aWinRate:aWin/total, bWinRate:bWin/total, drawRate:draw/total, total,
+    aAvgGoals: aGoals/total, bAvgGoals: bGoals/total};
+}
+
+// ポアソン分布に従う乱数生成（Knuthのアルゴリズム）
+function poissonRandom(lambda){
+  if(lambda <= 0) return 0;
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do{ k++; p *= Math.random(); } while(p > L);
+  return k-1;
+}
+
+// ELOを土台に、シーズン内の実績（得点・失点）で補正した攻撃力・守備力を算出。
+// 試合数が少ないうちはELO由来の値を、試合数が増えるほど実績を重視する（縮小推定）。
+function getAttackDefense(yr, div, team, elo){
+  const rating = elo[team]!==undefined ? elo[team] : ELO_BASE;
+  // ELOを攻撃力・守備力の初期値に変換（1500=平均1.0、±400で約±1.0の変化）
+  const attackFromElo = Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/400));
+  const defenseFromElo = Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/400));
+
+  const d = getDivData(yr, div);
+  const played = d ? (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)) : [];
+  const games = played.length;
+
+  if(!games) return { attack: attackFromElo, defense: defenseFromElo, games: 0 };
+
+  let gf=0, ga=0;
+  played.forEach(m=>{
+    const isHome = m.home===team;
+    gf += isHome? m.home_score : m.away_score;
+    ga += isHome? m.away_score : m.home_score;
+  });
+  const avgGf = gf/games, avgGa = ga/games;
+  // リーグ平均得点（概ね1試合1.3〜1.5点想定）と比較した相対値
+  const LEAGUE_AVG_GOALS = getLeagueAvgGoals();
+  const rawAttack = LEAGUE_AVG_GOALS>0 ? avgGf/LEAGUE_AVG_GOALS : 1.0;
+  const rawDefense = LEAGUE_AVG_GOALS>0 ? avgGa/LEAGUE_AVG_GOALS : 1.0;
+
+  // 縮小推定：試合数が増えるほど実績（raw）の重みを増やす
+  const K_SHRINK = 5;
+  const w = games/(games+K_SHRINK);
+  const attack = w*rawAttack + (1-w)*attackFromElo;
+  const defense = w*rawDefense + (1-w)*defenseFromElo;
+
+  return {
+    attack: Math.max(0.2, Math.min(3.0, attack)),
+    defense: Math.max(0.2, Math.min(3.0, defense)),
+    games
+  };
+}
+
+// リーグ全体の平均得点（ホーム・アウェイ合算、1チーム1試合あたり）を算出
+function getLeagueAvgGoals(){
+  let totalGoals=0, totalTeamGames=0;
+  getSeasons().forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      d.matches.filter(m=>m.played).forEach(m=>{
+        totalGoals += m.home_score + m.away_score;
+        totalTeamGames += 2;
+      });
+    });
+  });
+  return totalTeamGames>0 ? totalGoals/totalTeamGames : 1.35;
 }
 
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
@@ -2163,44 +2270,41 @@ function predictStandings(yr, div, simulations=10000){
     }));
   }
 
-  // ── 傾向データを事前計算（チーム毎に1回） ──
-  const tendency = {};
-  teams.forEach(t=>{ tendency[t] = getTeamTendency(yr, div, t); });
+  // ── 攻撃力・守備力を事前計算（ELO土台＋シーズン内実績で補正） ──
+  const ad = {};
+  teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
+  const leagueAvgGoals = getLeagueAvgGoals();
 
   const NEUTRAL = 1.3; // 平均的な1試合あたり勝点の目安（3勝1分の中間的水準）
-  const K_FORM = 14;   // 直近フォームの影響度
-  const K_SPLIT = 14;  // ホーム/アウェイ傾向の影響度
+  const K_FORM = 0.15;  // 直近フォームによる期待得点の補正係数
 
-  // ── 各残り試合の勝率を事前計算（シミュレーションごとに再計算しない） ──
-  const matchProbs = remainingMatches.map(m=>{
+  // ── 各残り試合の「期待得点（ホーム/アウェイ）」を事前計算 ──
+  const matchLambdas = remainingMatches.map(m=>{
     const h=m.home, a=m.away;
-    const Rh=getR(h), Ra=getR(a);
+    const adH = ad[h], adA = ad[a];
 
-    const tH = tendency[h], tA = tendency[a];
-    const formAdjH = tH.recentAvg!=null ? (tH.recentAvg-NEUTRAL)*K_FORM : 0;
-    const formAdjA = tA.recentAvg!=null ? (tA.recentAvg-NEUTRAL)*K_FORM : 0;
-    const splitAdjH = tH.homeAvg!=null ? (tH.homeAvg-NEUTRAL)*K_SPLIT : 0;
-    const splitAdjA = tA.awayAvg!=null ? (tA.awayAvg-NEUTRAL)*K_SPLIT : 0;
+    // 基本の期待得点：ホームの攻撃力×アウェイの守備力×リーグ平均、の形
+    let lamH = leagueAvgGoals * adH.attack * adA.defense;
+    let lamA = leagueAvgGoals * adA.attack * adH.defense;
 
-    const RhEff = Rh + ELO_HOME_ADV + formAdjH + splitAdjH;
-    const RaEff = Ra + formAdjA + splitAdjA;
+    // 直近フォームを軽く反映（勝点ペースが良ければ得点期待値を少し上げる）
+    const tH = getTeamTendency(yr, div, h), tA = getTeamTendency(yr, div, a);
+    if(tH.recentAvg!=null) lamH *= (1 + (tH.recentAvg-NEUTRAL)*K_FORM/3);
+    if(tA.recentAvg!=null) lamA *= (1 + (tA.recentAvg-NEUTRAL)*K_FORM/3);
 
-    let Eh = 1/(1+Math.pow(10,-(RhEff-RaEff)/400));
-    let drawP = 0.24;
-
-    // 直接対決の傾向を軽くブレンド
+    // 直接対決の得点傾向を軽くブレンド（h視点でのaAvgGoals/bAvgGoalsをそのままホーム/アウェイに対応させる）
     const h2h = getH2HStats(h, a);
-    if(h2h){
-      const blend = Math.min(0.3, h2h.total*0.03); // サンプル数に応じて最大30%まで反映
-      Eh = Eh*(1-blend) + h2h.aWinRate*blend;
-      drawP = drawP*(1-blend) + h2h.drawRate*blend;
+    if(h2h && h2h.total>=2){
+      const blend = Math.min(0.25, h2h.total*0.03);
+      lamH = lamH*(1-blend) + h2h.aAvgGoals*blend;
+      lamA = lamA*(1-blend) + h2h.bAvgGoals*blend;
     }
 
-    // 極端な値を抑制
-    Eh = Math.max(0.05, Math.min(0.90, Eh));
-    drawP = Math.max(0.10, Math.min(0.35, drawP));
+    // 極端な値を抑制（0.15〜5.0点の範囲に収める）
+    lamH = Math.max(0.15, Math.min(5.0, lamH));
+    lamA = Math.max(0.15, Math.min(5.0, lamA));
 
-    return {home:h, away:a, Eh, drawP};
+    return {home:h, away:a, lamH, lamA};
   });
 
   const rankCounts = {}; // team -> [0,0,0,...] count per rank
@@ -2209,12 +2313,15 @@ function predictStandings(yr, div, simulations=10000){
   for(let s=0; s<simulations; s++){
     const stats = {};
     teams.forEach(t=>stats[t]={pts:baseStats[t].pts, gd:baseStats[t].gf-baseStats[t].ga, gf:baseStats[t].gf});
-    for(let mi=0; mi<matchProbs.length; mi++){
-      const {home:h, away:a, Eh, drawP} = matchProbs[mi];
-      const rnd = Math.random();
-      if(rnd < Eh*(1-drawP)){ stats[h].pts+=3; stats[h].gd+=1; stats[a].gd-=1; }
-      else if(rnd < Eh*(1-drawP)+drawP){ stats[h].pts++; stats[a].pts++; }
-      else { stats[a].pts+=3; stats[a].gd+=1; stats[h].gd-=1; }
+    for(let mi=0; mi<matchLambdas.length; mi++){
+      const {home:h, away:a, lamH, lamA} = matchLambdas[mi];
+      const gh = poissonRandom(lamH);
+      const ga = poissonRandom(lamA);
+      stats[h].gd += gh-ga; stats[a].gd += ga-gh;
+      stats[h].gf += gh; stats[a].gf += ga;
+      if(gh>ga){ stats[h].pts+=3; }
+      else if(gh<ga){ stats[a].pts+=3; }
+      else { stats[h].pts++; stats[a].pts++; }
     }
     const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
     ranked.forEach((t,i)=>rankCounts[t][i]++);
@@ -2263,6 +2370,254 @@ let predictCache = {}; // key: `${yr}-${div}` -> pred結果
 function predictCacheKey(yr, div){ return `${yr}-${div}`; }
 
 // ページを開いた時・タブ/年度切替時に呼ぶ（再計算はしない）
+// 予測タブ内の「予測 / 精度検証」切り替え
+function switchPredictSubtab(tab){
+  document.getElementById('pr-subtab-predict').classList.toggle('active', tab==='predict');
+  document.getElementById('pr-subtab-backtest').classList.toggle('active', tab==='backtest');
+  document.getElementById('predict-area').style.display = tab==='predict' ? '' : 'none';
+  document.getElementById('backtest-area').style.display = tab==='backtest' ? '' : 'none';
+  if(tab==='backtest' && !document.getElementById('backtest-area').dataset.rendered){
+    renderBacktestIntro();
+  }
+}
+
+function renderBacktestIntro(){
+  const el = document.getElementById('backtest-area');
+  el.dataset.rendered = '1';
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-body">
+        <p style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:12px;">
+          過去に終了したシーズンについて、「そのシーズン開始時点のデータだけ」を使って予測をやり直し、実際の最終順位とどれだけ近かったかを検証します。<br>
+          複数シーズン分まとめて実行するため、少し時間がかかります。
+        </p>
+        <button class="btn btn-g btn-full" onclick="runBacktest()">🧪 精度検証を実行</button>
+        <div id="backtest-result"></div>
+      </div>
+    </div>`;
+}
+
+// バックテスト：完了済みの各シーズン・各部門について、
+// 「そのシーズン開始前の全データ」のみでELO/攻撃力・守備力を計算し、
+// シーズン全体をシミュレートして実際の最終順位との誤差を測る。
+function runBacktest(){
+  const resultEl = document.getElementById('backtest-result');
+  resultEl.innerHTML = `<div class="loading">🧪 検証中…（シーズン数によっては数秒かかります）</div>`;
+
+  setTimeout(()=>{
+    const seasons = getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
+    const rows = []; // {yr,div,maeRank,championHit,promoteHit,relegateHit,poolSize}
+
+    seasons.forEach(yr=>{
+      [1,2,3].forEach(div=>{
+        const d = getDivData(yr, div);
+        if(!d || !d.matches) return;
+        const allPlayed = d.matches.length>0 && d.matches.every(m=>m.played);
+        if(!allPlayed) return; // 完了済みシーズンのみ対象
+
+        const backtestResult = backtestOneSeason(yr, div);
+        if(backtestResult) rows.push(backtestResult);
+      });
+    });
+
+    if(!rows.length){
+      resultEl.innerHTML = `<div class="loading" style="margin-top:12px;">検証できる「完了済みシーズン」がありません</div>`;
+      return;
+    }
+
+    const avgMae = rows.reduce((s,r)=>s+r.maeRank,0)/rows.length;
+    const championHitRate = rows.filter(r=>r.championHit).length/rows.length*100;
+    const promoteHitRates = rows.filter(r=>r.promoteTotal>0);
+    const avgPromoteHitRate = promoteHitRates.length ? promoteHitRates.reduce((s,r)=>s+r.promoteHitRate,0)/promoteHitRates.length : null;
+    const relegateHitRates = rows.filter(r=>r.relegateTotal>0);
+    const avgRelegateHitRate = relegateHitRates.length ? relegateHitRates.reduce((s,r)=>s+r.relegateHitRate,0)/relegateHitRates.length : null;
+
+    let html = `<div class="slbl">検証結果（${rows.length}シーズン×部門）</div>`;
+    html += `<div class="stat-pills" style="padding:0 0 4px;">
+      <div class="stat-pill"><div class="stat-pill-val">${avgMae.toFixed(2)}</div><div class="stat-pill-lbl">平均順位誤差</div></div>
+      <div class="stat-pill"><div class="stat-pill-val">${championHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">優勝的中率</div></div>
+      ${avgPromoteHitRate!==null?`<div class="stat-pill"><div class="stat-pill-val">${avgPromoteHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">昇格圏的中率</div></div>`:''}
+      ${avgRelegateHitRate!==null?`<div class="stat-pill"><div class="stat-pill-val">${avgRelegateHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">降格圏的中率</div></div>`:''}
+    </div>`;
+
+    html += `<div class="slbl">シーズン別詳細</div><div class="card">`;
+    html += `<table class="stbl"><thead><tr><th>年度</th><th>部門</th><th>順位誤差</th><th>優勝的中</th></tr></thead><tbody>`;
+    rows.forEach(r=>{
+      html += `<tr>
+        <td>${r.yr}年目</td>
+        <td>${getDivName(r.div)}</td>
+        <td>${r.maeRank.toFixed(2)}</td>
+        <td>${r.championHit?'✓':'—'}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    html += `<p style="font-size:11px;color:var(--muted);padding:8px 13px 16px;line-height:1.6;">
+      ※ 平均順位誤差＝予測順位と実際の最終順位の差の平均（0に近いほど良い）。<br>
+      ※ 優勝的中率＝予測1位のチームが実際にも優勝していた割合。
+    </p>`;
+
+    resultEl.innerHTML = html;
+  }, 50);
+}
+
+// 指定シーズン・部門を1件バックテストする。
+// 「そのシーズンより前の全データ」だけでELOを計算し、当シーズンを丸ごとシミュレートする。
+function backtestOneSeason(yr, div){
+  const d = getDivData(yr, div);
+  if(!d) return null;
+  const teams = d.teams;
+  const n = teams.length;
+  if(n < 2) return null;
+
+  // 「このシーズンより前のデータだけ」を使ったELOを計算（当シーズンの試合は除外）
+  const eloBefore = calcAllEloBeforeSeason(yr);
+  const getR = t => eloBefore[t]!==undefined ? eloBefore[t] : ELO_BASE;
+
+  // 攻撃力・守備力は「シーズン開始時点＝実績ゼロ」なのでELO由来の値のみ使用
+  const ad = {};
+  teams.forEach(t=>{
+    const rating = getR(t);
+    ad[t] = {
+      attack: Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/400)),
+      defense: Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/400)),
+    };
+  });
+  const leagueAvgGoals = getLeagueAvgGoals();
+
+  const matchLambdas = d.matches.map(m=>{
+    const lamH = Math.max(0.15, Math.min(5.0, leagueAvgGoals * ad[m.home].attack * ad[m.away].defense));
+    const lamA = Math.max(0.15, Math.min(5.0, leagueAvgGoals * ad[m.away].attack * ad[m.home].defense));
+    return {home:m.home, away:m.away, lamH, lamA};
+  });
+
+  const simulations = 2000; // バックテストは多シーズン処理のため試行回数を抑える
+  const rankCounts = {};
+  teams.forEach(t=>rankCounts[t]=new Array(n).fill(0));
+
+  for(let s=0; s<simulations; s++){
+    const stats = {};
+    teams.forEach(t=>stats[t]={pts:0,gd:0,gf:0});
+    matchLambdas.forEach(m=>{
+      const gh=poissonRandom(m.lamH), ga=poissonRandom(m.lamA);
+      stats[m.home].gd+=gh-ga; stats[m.away].gd+=ga-gh;
+      stats[m.home].gf+=gh; stats[m.away].gf+=ga;
+      if(gh>ga) stats[m.home].pts+=3;
+      else if(gh<ga) stats[m.away].pts+=3;
+      else { stats[m.home].pts++; stats[m.away].pts++; }
+    });
+    const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
+    ranked.forEach((t,i)=>rankCounts[t][i]++);
+  }
+
+  const predAvgRank = {};
+  teams.forEach(t=>{
+    const counts = rankCounts[t];
+    let sum=0; counts.forEach((c,i)=>sum+=c*(i+1));
+    predAvgRank[t] = sum/simulations;
+  });
+
+  // 実際の最終順位
+  const actual = calcStandings(yr, div);
+  const actualRank = {};
+  actual.forEach(r=>{ actualRank[r.team]=r.rank; });
+
+  // 予測順位（平均順位が小さい順）
+  const predRanked = teams.slice().sort((a,b)=>predAvgRank[a]-predAvgRank[b]);
+  const predRank = {};
+  predRanked.forEach((t,i)=>{ predRank[t]=i+1; });
+
+  // 平均順位誤差（MAE）
+  let errSum=0;
+  teams.forEach(t=>{ errSum += Math.abs(predRank[t]-actualRank[t]); });
+  const maeRank = errSum/teams.length;
+
+  // 優勝的中
+  const championHit = predRanked[0] === actual[0]?.team;
+
+  // 昇格圏・降格圏の的中率
+  const pN = div>1 ? AUTO_PROMOTE_N : 0;
+  const rN = div<3 ? AUTO_RELEGATE_N : 0;
+  let promoteHit=0, promoteTotal=0, relegateHit=0, relegateTotal=0;
+  if(pN>0){
+    const predPromote = new Set(predRanked.slice(0,pN));
+    const actualPromote = new Set(actual.slice(0,pN).map(r=>r.team));
+    promoteTotal = pN;
+    predPromote.forEach(t=>{ if(actualPromote.has(t)) promoteHit++; });
+  }
+  if(rN>0){
+    const predRelegate = new Set(predRanked.slice(-rN));
+    const actualRelegate = new Set(actual.slice(-rN).map(r=>r.team));
+    relegateTotal = rN;
+    predRelegate.forEach(t=>{ if(actualRelegate.has(t)) relegateHit++; });
+  }
+
+  return {
+    yr, div, maeRank, championHit,
+    promoteHitRate: promoteTotal>0 ? promoteHit/promoteTotal*100 : null, promoteTotal,
+    relegateHitRate: relegateTotal>0 ? relegateHit/relegateTotal*100 : null, relegateTotal,
+  };
+}
+
+// 指定シーズンより「前」の全データだけを使ってELOを計算する（バックテスト用）
+function calcAllEloBeforeSeason(targetYr){
+  const elo = {};
+  const gamesPlayed = {};
+  const getR = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
+  const getK = t => (gamesPlayed[t]||0) < PROVISIONAL_GAMES ? ELO_K_PROVISIONAL : ELO_K;
+  const bumpGames = t => { gamesPlayed[t] = (gamesPlayed[t]||0) + 1; };
+  const dynamicHomeAdv = computeEmpiricalHomeAdvantage();
+
+  const events = [];
+  const seasons = getSeasons().filter(yr=>parseInt(yr) < parseInt(targetYr));
+  seasons.forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      d.matches.filter(m=>m.played).forEach(m=>{
+        events.push({ type:'league', yr, div, m, order: m.playedAt !== undefined ? m.playedAt : 0 });
+      });
+    });
+    const cup = getCup(yr);
+    if(cup && cup.matches){
+      cup.matches.filter(m=>m.played && !m.walkover && m.teamA && m.teamB).forEach(m=>{
+        events.push({ type:'cup', yr, m, order: m.playedAt !== undefined ? m.playedAt : 0 });
+      });
+    }
+  });
+  events.sort((x,y)=> x.order - y.order);
+
+  events.forEach(ev=>{
+    const m = ev.m;
+    if(ev.type==='league'){
+      const h=m.home, a=m.away;
+      const Rh=getR(h), Ra=getR(a);
+      const Kh=getK(h), Ka=getK(a);
+      const Eh = 1/(1+Math.pow(10,-(Rh+dynamicHomeAdv-Ra)/400));
+      const Ea = 1-Eh;
+      let Sh; if(m.home_score>m.away_score) Sh=1; else if(m.home_score<m.away_score) Sh=0; else Sh=0.5;
+      const Sa = 1-Sh;
+      const gd = Math.abs(m.home_score - m.away_score);
+      const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
+      elo[h]=Rh+Kh*gMult*(Sh-Eh); elo[a]=Ra+Ka*gMult*(Sa-Ea);
+      bumpGames(h); bumpGames(a);
+    } else {
+      const h=m.teamA, a=m.teamB;
+      const Rh=getR(h), Ra=getR(a);
+      const Kh=getK(h), Ka=getK(a);
+      const Eh = 1/(1+Math.pow(10,-(Rh-Ra)/400));
+      const Ea = 1-Eh;
+      let Sh; if(m.scoreA>m.scoreB) Sh=1; else if(m.scoreA<m.scoreB) Sh=0; else Sh=0.5;
+      const Sa = 1-Sh;
+      const gd = Math.abs(m.scoreA - m.scoreB);
+      const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
+      elo[h]=Rh+Kh*gMult*(Sh-Eh); elo[a]=Ra+Ka*gMult*(Sa-Ea);
+      bumpGames(h); bumpGames(a);
+    }
+  });
+
+  return elo;
+}
+
 function renderPredictPage(){
   const yr = document.getElementById('pr-yr').value;
   const div = curDiv.predict;
