@@ -934,6 +934,22 @@ function saveDivName(div){
 }
 
 // ══ チーム編集（追加・削除） ══
+// 全シーズン・全部門（＋カップ戦）を対象に、指定チームが1試合でも組まれているか調べる
+function teamHasAnyMatches(name){
+  for(const yr in db.seasons){
+    const divisions = db.seasons[yr].divisions || {};
+    for(const dv in divisions){
+      const matches = divisions[dv].matches || [];
+      if(matches.some(m=>m.home===name || m.away===name)) return true;
+    }
+  }
+  for(const yr in db.cups){
+    const matches = db.cups[yr].matches || [];
+    if(matches.some(m=>m.teamA===name || m.teamB===name)) return true;
+  }
+  return false;
+}
+
 function renderTeamEditor(){
   teDiv = parseInt(document.getElementById('te-div').value)||1;
   const teams = Object.entries(db.teams).filter(([_,t])=>t.div===teDiv);
@@ -946,15 +962,44 @@ function renderTeamEditor(){
   let html='';
   teams.forEach(([name,info])=>{
     const inactive = !info.active;
+    const hasMatches = teamHasAnyMatches(name);
+    let actionBtn;
+    if(inactive){
+      actionBtn = `<button class="btn btn-sub btn-sm" onclick="restoreTeam('${name.replace(/'/g,"\\'")}')">復元</button>`;
+    } else if(!hasMatches){
+      // 試合が一度も組まれていない＝誤字などで増えたチームは完全削除できる
+      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="hardDeleteTeam('${name.replace(/'/g,"\\'")}')">🗑 完全削除</button>`;
+    } else {
+      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="removeTeamFromEditor('${name.replace(/'/g,"\\'")}')">削除</button>`;
+    }
     html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;${inactive?'opacity:.45;':''}">
-      <span style="flex:1;font-size:13px;font-weight:700;">${name}${inactive?' (削除済)':''}</span>
-      ${inactive
-        ? `<button class="btn btn-sub btn-sm" onclick="restoreTeam('${name.replace(/'/g,"\\'")}')">復元</button>`
-        : `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="removeTeamFromEditor('${name.replace(/'/g,"\\'")}')">削除</button>`
-      }
+      <span style="flex:1;font-size:13px;font-weight:700;">${name}${inactive?' (削除済)':''}${!inactive&&!hasMatches?' <span style="font-size:10px;color:var(--muted);font-weight:400;">（試合未組込）</span>':''}</span>
+      ${actionBtn}
     </div>`;
   });
   el.innerHTML = html;
+}
+
+// 試合が一度も組まれていないチームの完全削除（誤字などで増えたチームの掃除用）
+function hardDeleteTeam(name){
+  if(teamHasAnyMatches(name)){
+    alert('このチームは既に試合が組まれているため完全削除できません。「削除」（無効化）をご利用ください。');
+    return;
+  }
+  if(!confirm(`「${name}」を完全に削除します（この操作は取り消せません）。よろしいですか？`)) return;
+
+  delete db.teams[name];
+  // シーズンの teams 一覧（手動追加時に登録された残骸）からも除去
+  for(const yr in db.seasons){
+    const divisions = db.seasons[yr].divisions || {};
+    for(const dv in divisions){
+      const d = divisions[dv];
+      if(d.teams) d.teams = d.teams.filter(t=>t!==name);
+    }
+  }
+  save(db);
+  renderTeamEditor();
+  buildH2HSelects();
 }
 
 function addTeamToEditor(){
@@ -966,7 +1011,6 @@ function addTeamToEditor(){
   inp.value='';
   save(db);
   renderTeamEditor();
-  renderTeamEditor();
 }
 
 function removeTeamFromEditor(name){
@@ -974,14 +1018,12 @@ function removeTeamFromEditor(name){
   if(db.teams[name]) db.teams[name].active = false;
   save(db);
   renderTeamEditor();
-  renderTeamEditor();
   buildH2HSelects();
 }
 
 function restoreTeam(name){
   if(db.teams[name]) db.teams[name].active = true;
   save(db);
-  renderTeamEditor();
   renderTeamEditor();
   buildH2HSelects();
 }
