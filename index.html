@@ -180,7 +180,14 @@ canvas{display:block;max-width:100%;}
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
         <div style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 新シーズン開始</div>
         <div class="field"><label>年度（何年目か）</label><input type="number" id="s-yr" placeholder="例: 1" min="1"></div>
-        <p style="font-size:11px;color:var(--muted);margin:6px 0 12px;line-height:1.7;">
+        <div class="field">
+          <label>日程の作り方</label>
+          <div class="tabs" style="padding:0;">
+            <div class="tab active" id="sched-mode-auto" onclick="setScheduleMode('auto')">🎲 自動（総当たり）</div>
+            <div class="tab" id="sched-mode-manual" onclick="setScheduleMode('manual')">✍️ 手動（実在リーグ再現）</div>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:6px 0 12px;line-height:1.7;" id="sched-mode-desc">
           前年度が存在する場合、自動で昇降格を適用してから開始します。<br>
           <strong style="color:var(--g);">昇格</strong>：1〜2位＋プレーオフ優勝チーム（3チーム）<br>
           <strong style="color:var(--red);">降格</strong>：下位3チーム（18〜20位相当）<br>
@@ -551,6 +558,8 @@ function loadMatches(){
 function renderMatches(){
   const div=curDiv.matches;
   const yr=latestSeason();
+  const d=getDivData(yr,div);
+  const isManual = d?.scheduleMode==='manual';
   const data=allMatches[div]||[];
   const rv=document.getElementById('m-round').value;
   const sv=document.getElementById('m-status').value;
@@ -561,15 +570,23 @@ function renderMatches(){
   const groups={};
   filtered.forEach(m=>{const k=`${m.leg}-${m.round}`;(groups[k]=groups[k]||[]).push(m);});
   const keys=Object.keys(groups).sort((a,b)=>{const[al,ar]=a.split('-').map(Number),[bl,br]=b.split('-').map(Number);return al-bl||ar-br;});
-  if(!keys.length){document.getElementById('matches-area').innerHTML='<div class="loading">該当なし</div>';return;}
-  let html='';
+
+  let html = isManual ? buildManualAddFormHtml(div) : '';
+
+  if(!keys.length){
+    html += `<div class="loading">${isManual?'まだ試合がありません。上のフォームから追加してください':'該当なし'}</div>`;
+    document.getElementById('matches-area').innerHTML=html;
+    return;
+  }
   keys.forEach(k=>{
     const[l,r]=k.split('-').map(Number);
     const cr = getContinuousRound(data, l, r);
     html+=`<div class="rlbl">第${cr}節</div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
     groups[k].forEach(m=>{
       const hs=m.home_score!==null?m.home_score:'',as_=m.away_score!==null?m.away_score:'';
-      html+=`<div class="mcard"><div class="mteam home">${m.home}</div>
+      html+=`<div class="mcard">
+        ${isManual?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:-4px;"><button class="sbtn" style="border-color:#ffcdd2;color:var(--red);padding:2px 8px;font-size:10px;" onclick="deleteManualMatch('${yr}',${div},${m.id})">🗑 削除</button></div>`:''}
+        <div class="mteam home">${m.home}</div>
         <div class="mcenter">
           <div class="srow">
             <input class="sinp" type="number" min="0" max="99" value="${hs}" placeholder="-" id="hs-${div}-${m.id}">
@@ -586,6 +603,153 @@ function renderMatches(){
     html+=`</div>`;
   });
   document.getElementById('matches-area').innerHTML=html;
+}
+
+// 手動モード用：単発追加フォーム＋一括貼り付けフォームのHTML
+function buildManualAddFormHtml(div){
+  const yr = latestSeason();
+  const d = getDivData(yr, div);
+  const teams = d?.teams || [];
+  const teamOptions = teams.map(t=>`<option value="${t}">${t}</option>`).join('');
+  return `
+    <div class="card">
+      <div class="card-hdr">✍️ 試合を追加</div>
+      <div class="card-body">
+        <div class="row" style="margin-bottom:8px;">
+          <div class="field" style="margin:0;flex:0 0 70px;"><label>節</label><input type="number" id="ma-round" min="1" placeholder="1"></div>
+          <div class="field" style="margin:0;flex:1;"><label>ホーム</label>
+            <select id="ma-home"><option value="">選択 or 下で入力</option>${teamOptions}</select>
+          </div>
+          <div class="field" style="margin:0;flex:1;"><label>アウェイ</label>
+            <select id="ma-away"><option value="">選択 or 下で入力</option>${teamOptions}</select>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:8px;">
+          <input type="text" id="ma-home-new" placeholder="ホーム（新チーム名で入力も可）">
+          <input type="text" id="ma-away-new" placeholder="アウェイ（新チーム名で入力も可）">
+        </div>
+        <div class="row" style="margin-bottom:10px;align-items:center;">
+          <label style="font-size:11px;color:var(--muted);white-space:nowrap;">結果（任意）：</label>
+          <input type="number" id="ma-hs" min="0" placeholder="-" style="width:50px;">
+          <span style="color:var(--muted);">:</span>
+          <input type="number" id="ma-as" min="0" placeholder="-" style="width:50px;">
+        </div>
+        <button class="btn btn-g btn-sm btn-full" onclick="addManualMatch('${div}')">✚ 追加</button>
+
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
+          <div style="font-size:12px;font-weight:700;margin-bottom:6px;">📋 まとめて貼り付けで追加</div>
+          <textarea id="ma-bulk" placeholder="節,ホーム,アウェイ,ホーム得点,アウェイ得点
+1,浦和レッズ,鹿島アントラーズ,2,1
+1,横浜FM,川崎フロンターレ
+2,鹿島アントラーズ,横浜FM" style="min-height:100px;font-family:monospace;font-size:11px;"></textarea>
+          <p style="font-size:10px;color:var(--muted);margin:4px 0 8px;">得点列は省略可（節,ホーム,アウェイ だけでもOK）</p>
+          <button class="btn btn-sub btn-sm btn-full" onclick="addManualMatchesBulk('${div}')">📥 まとめて追加</button>
+        </div>
+        <div id="ma-msg" style="font-size:12px;margin-top:8px;"></div>
+      </div>
+    </div>`;
+}
+
+function addManualMatch(divStr){
+  const div = parseInt(divStr);
+  const yr = latestSeason();
+  const d = getDivData(yr, div);
+  if(!d) return;
+  const msg = document.getElementById('ma-msg');
+
+  const round = parseInt(document.getElementById('ma-round').value);
+  const home = (document.getElementById('ma-home-new').value.trim()) || document.getElementById('ma-home').value;
+  const away = (document.getElementById('ma-away-new').value.trim()) || document.getElementById('ma-away').value;
+  const hsRaw = document.getElementById('ma-hs').value;
+  const asRaw = document.getElementById('ma-as').value;
+
+  if(!round || !home || !away || home===away){
+    msg.style.color='var(--red)'; msg.textContent='節・ホーム・アウェイを正しく入力してください（同一チーム同士は不可）';
+    return;
+  }
+
+  let home_score=null, away_score=null, played=false;
+  if(hsRaw!=='' && asRaw!==''){
+    const hs=parseInt(hsRaw), as_=parseInt(asRaw);
+    if(!isNaN(hs) && !isNaN(as_) && hs>=0 && as_>=0){ home_score=hs; away_score=as_; played=true; }
+  }
+
+  const newId = d.matches.length ? Math.max(...d.matches.map(m=>m.id))+1 : 0;
+  const newMatch = {id:newId, round, leg:1, home, away, home_score, away_score, played};
+  if(played) newMatch.playedAt = db._seq++;
+  d.matches.push(newMatch);
+
+  if(!d.teams.includes(home)) d.teams.push(home);
+  if(!d.teams.includes(away)) d.teams.push(away);
+  if(!db.teams[home]) db.teams[home]={div, active:true};
+  if(!db.teams[away]) db.teams[away]={div, active:true};
+
+  save(db);
+  document.getElementById('ma-round').value='';
+  document.getElementById('ma-home-new').value='';
+  document.getElementById('ma-away-new').value='';
+  document.getElementById('ma-hs').value='';
+  document.getElementById('ma-as').value='';
+  msg.style.color='var(--g)'; msg.textContent='✓ 追加しました';
+  loadMatches();
+  loadStandings();
+  renderTeamEditor();
+}
+
+function addManualMatchesBulk(divStr){
+  const div = parseInt(divStr);
+  const yr = latestSeason();
+  const d = getDivData(yr, div);
+  if(!d) return;
+  const msg = document.getElementById('ma-msg');
+  const raw = document.getElementById('ma-bulk').value;
+
+  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l && !l.startsWith('節,'));
+  if(!lines.length){ msg.style.color='var(--red)'; msg.textContent='貼り付け内容を入力してください'; return; }
+
+  let nextId = d.matches.length ? Math.max(...d.matches.map(m=>m.id))+1 : 0;
+  let added=0, skipped=0;
+
+  lines.forEach(line=>{
+    const cols = line.split(',').map(c=>c.trim());
+    if(cols.length<3){ skipped++; return; }
+    const round = parseInt(cols[0]);
+    const home = cols[1], away = cols[2];
+    if(!round || !home || !away || home===away){ skipped++; return; }
+
+    let home_score=null, away_score=null, played=false;
+    if(cols.length>=5 && cols[3]!=='' && cols[4]!==''){
+      const hs=parseInt(cols[3]), as_=parseInt(cols[4]);
+      if(!isNaN(hs) && !isNaN(as_) && hs>=0 && as_>=0){ home_score=hs; away_score=as_; played=true; }
+    }
+
+    const m = {id:nextId++, round, leg:1, home, away, home_score, away_score, played};
+    if(played) m.playedAt = db._seq++;
+    d.matches.push(m);
+    if(!d.teams.includes(home)) d.teams.push(home);
+    if(!d.teams.includes(away)) d.teams.push(away);
+    if(!db.teams[home]) db.teams[home]={div, active:true};
+    if(!db.teams[away]) db.teams[away]={div, active:true};
+    added++;
+  });
+
+  save(db);
+  document.getElementById('ma-bulk').value='';
+  msg.style.color='var(--g)';
+  msg.textContent = `✓ ${added}試合を追加しました${skipped?`（${skipped}行スキップ）`:''}`;
+  loadMatches();
+  loadStandings();
+  renderTeamEditor();
+}
+
+function deleteManualMatch(yr, div, id){
+  if(!confirm('この試合を削除しますか？')) return;
+  const d = getDivData(yr, div);
+  if(!d) return;
+  d.matches = d.matches.filter(m=>m.id!==id);
+  save(db);
+  loadMatches();
+  loadStandings();
 }
 
 function saveMatch(yr,div,id){
@@ -643,6 +807,29 @@ function computePromotionMoves(prevYr){
   return moves;
 }
 
+// 日程作成方式（自動/手動）の選択状態
+let scheduleMode = 'auto';
+function setScheduleMode(mode){
+  scheduleMode = mode;
+  document.getElementById('sched-mode-auto').classList.toggle('active', mode==='auto');
+  document.getElementById('sched-mode-manual').classList.toggle('active', mode==='manual');
+  const desc = document.getElementById('sched-mode-desc');
+  const btn = document.querySelector('[onclick="startNewSeason()"]');
+  if(mode==='auto'){
+    desc.innerHTML = `前年度が存在する場合、自動で昇降格を適用してから開始します。<br>
+      <strong style="color:var(--g);">昇格</strong>：1〜2位＋プレーオフ優勝チーム（3チーム）<br>
+      <strong style="color:var(--red);">降格</strong>：下位3チーム（18〜20位相当）<br>
+      1部は昇格なし、3部は降格なしです。<br><br>
+      各部門の登録済みチームで総当たり日程を自動生成します。`;
+    if(btn) btn.textContent = '▶ この年度を開始する（自動昇降格を適用）';
+  } else {
+    desc.innerHTML = `前年度が存在する場合、自動で昇降格を適用してから開始します（チームの所属部門のみ更新）。<br>
+      日程・試合は自動生成せず<strong>空の状態で開始</strong>します。<br>
+      開始後、「🏆リーグ」タブから節・対戦カード・結果をご自身で入力してください（実在のJリーグ日程などをそのまま反映できます）。`;
+    if(btn) btn.textContent = '▶ この年度を開始する（日程は後で手動入力）';
+  }
+}
+
 function startNewSeason(){
   const yr = parseInt(document.getElementById('s-yr').value);
   const msg = document.getElementById('season-start-msg');
@@ -651,7 +838,7 @@ function startNewSeason(){
 
   const prevYr = String(yr-1);
   let moves = [];
-  let confirmMsg = `「${yr}年目」を開始します。\n\n`;
+  let confirmMsg = `「${yr}年目」を開始します（${scheduleMode==='auto'?'自動日程':'手動日程'}）。\n\n`;
 
   if(db.seasons[prevYr]){
     moves = computePromotionMoves(prevYr);
@@ -671,6 +858,9 @@ function startNewSeason(){
     return {div, count: teams.length};
   });
   confirmMsg += preview.map(p=>`${getDivName(p.div)}: ${p.count}チーム`).join('\n');
+  if(scheduleMode==='manual'){
+    confirmMsg += `\n\n※手動日程モード：試合は空の状態で開始します。`;
+  }
 
   if(!confirm(confirmMsg)) return;
 
@@ -681,15 +871,25 @@ function startNewSeason(){
     db.promotionLog.push({ fromYear: prevYr, toYear: String(yr), team: m.team, fromDiv: m.from, toDiv: m.to, reason: m.reason });
   });
 
-  // 各部門でシーズン開始（2チーム以上のみ）
+  // 各部門でシーズン開始
+  // 自動モード：2チーム以上のみ開始（総当たり日程を自動生成）
+  // 手動モード：チーム0でも空の状態で開始OK（後からリーグタブでチーム・試合を追加していく）
   const started = [];
   const skipped = [];
   [1,2,3].forEach(div=>{
     const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
-    if(teams.length>=2){
+    if(scheduleMode==='manual'){
       db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
       db.seasons[String(yr)].divisions[String(div)] = {
-        teams, matches:genMatches(teams), started:true,
+        teams, matches:[], started:true, scheduleMode:'manual',
+        promoteN: AUTO_PROMOTE_N, relegateN: AUTO_RELEGATE_N,
+        playoff: {enabled:div>1, playoffN:4, matches:[], winner:null}
+      };
+      started.push(div);
+    } else if(teams.length>=2){
+      db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
+      db.seasons[String(yr)].divisions[String(div)] = {
+        teams, matches:genMatches(teams), started:true, scheduleMode:'auto',
         promoteN: AUTO_PROMOTE_N, relegateN: AUTO_RELEGATE_N,
         playoff: {enabled:div>1, playoffN:4, matches:[], winner:null}
       };
