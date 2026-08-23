@@ -16,7 +16,7 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:#f5f7fa;color:#1
   --gold:#f5a623;--gold2:#fff8e1;
   --bg:#f5f7fa;--white:#fff;
   --border:#dde3ed;--muted:#6b7c93;
-  --d1:#f5a623;--d2:#00a854;--d3:#0288d1;
+  --d1:#e53935;--d2:#00a854;--d3:#0288d1;
 }
 /* ボトムナビ */
 .bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid var(--border);display:flex;height:58px;}
@@ -66,9 +66,12 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .stbl-compact td{padding:5px 2px;}
 .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .row-p{background:var(--g2);}
+.row-po{background:var(--gold2);}
 .row-r{background:var(--red2);}
 .pts{font-size:15px;font-weight:700;color:var(--g);}
 .rn{font-weight:700;font-size:14px;}
+.team-link{cursor:pointer;}
+.team-link:active{opacity:.6;}
 .r1{color:var(--gold)}.r2{color:#90a4ae}.r3{color:#ff8a65}
 /* プログレス */
 .prog{padding:6px 13px;}
@@ -487,19 +490,26 @@ function loadStandings(){
   const done = matches.filter(m=>m.played).length;
   const total = matches.length;
   const pN = d?.promoteN||1, rN = d?.relegateN||1;
-  const color = ['','#f5a623','#00a854','#0288d1'][div];
+  const poEnabled = d?.playoff?.enabled;
+  const poN = d?.playoff?.playoffN||0;
+  const color = ['','#e53935','#00a854','#0288d1'][div];
   const n = rows.length;
 
   let html=`<div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${total?done/total*100:0}%;background:${color}"></div></div><div class="prog-txt">${done}/${total} 試合</div></div>`;
   if(!rows.length){ html+='<div class="loading">データなし</div>'; document.getElementById('standings-area').innerHTML=html; return; }
   html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
-    const isP = div!==1&&i<pN, isR = div!==3&&n-i<=rN;
+    const isP = div!==1 && i<pN;
+    const isPO = div!==1 && poEnabled && i>=pN && i<pN+poN;
+    const isR = div!==3 && n-i<=rN;
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
     const gd = r.gd>0?'+'+r.gd:r.gd;
     const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
-    const badge = isP?'<span style="font-size:9px;color:var(--g)">↑</span>':isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'';
-    html+=`<tr class="${isP?'row-p':isR?'row-r':''}"><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td><span class="pts">${r.pts}</span></td></tr>`;
+    const badge = isP?'<span style="font-size:9px;color:var(--g)">↑</span>'
+      : isPO?'<span style="font-size:9px;color:var(--gold)">PO</span>'
+      : isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'';
+    const rowClass = isP?'row-p':isPO?'row-po':isR?'row-r':'';
+    html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td><span class="pts">${r.pts}</span></td></tr>`;
   });
   html+=`</tbody></table></div></div>`;
   document.getElementById('standings-area').innerHTML=html;
@@ -864,7 +874,7 @@ function startNewSeason(){
 
   if(!confirm(confirmMsg)) return;
 
-  // 昇降格を適用（同時に永続ログへ記録＝記録タブの昇降格遍歴で使用）
+  // 昇降格を適用（ログは記録のみ・現在は表示未使用）
   if(!db.promotionLog) db.promotionLog = [];
   moves.forEach(m=>{
     if(db.teams[m.team]) db.teams[m.team].div = m.to;
@@ -1194,7 +1204,7 @@ function renderHistAlltime(){
 
   // ── 優勝回数（部門別） ──
   [1,2,3].forEach(div=>{
-    const color=['','#f5a623','#00a854','#0288d1'][div];
+    const color=['','#e53935','#00a854','#0288d1'][div];
     const wins={};
     seasons.forEach(yr=>{
       const r=getStandings(yr,div);
@@ -1213,26 +1223,6 @@ function renderHistAlltime(){
     });
     html+=`</div>`;
   });
-
-  // ── 昇降格遍歴 ──
-  const log = (db.promotionLog||[]).slice().sort((a,b)=>parseInt(b.toYear)-parseInt(a.toYear));
-  html+=`<div class="slbl">🔀 昇降格遍歴</div>`;
-  if(!log.length){
-    html+=`<div class="card"><div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">まだ昇降格の記録がありません</div></div>`;
-  } else {
-    html+=`<div class="card">`;
-    log.forEach(e=>{
-      const isUp = e.toDiv < e.fromDiv;
-      const arrow = isUp ? '🔼' : '🔽';
-      const color = isUp ? 'var(--g)' : 'var(--red)';
-      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
-        <span style="font-size:11px;color:var(--muted);flex:0 0 auto;width:60px;">${e.fromYear}→${e.toYear}</span>
-        <span style="flex:1;font-size:13px;font-weight:700;">${e.team}</span>
-        <span style="font-size:12px;color:${color};font-weight:700;white-space:nowrap;">${arrow} ${e.fromDiv}部→${e.toDiv}部</span>
-      </div>`;
-    });
-    html+=`</div>`;
-  }
 
   document.getElementById('history-area').innerHTML=html;
 }
@@ -2452,6 +2442,7 @@ function predictStandings(yr, div, simulations=10000){
       relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null,
       winProb: div===1 ? (r.rank===1 ? 100 : 0) : null,
       best8Prob: div===1 ? (r.rank<=8 ? 100 : 0) : null,
+      rankDist: Array.from({length:n}, (_,i)=> i+1===r.rank ? 100 : 0),
     }));
   }
 
@@ -2540,6 +2531,7 @@ function predictStandings(yr, div, simulations=10000){
       best8Prob: div===1 ? Math.round(best8Count/simulations*100) : null,
       currentPts: baseStats[t].pts,
       elo: Math.round(getR(t)),
+      rankDist: counts.map(c=>Math.round(c/simulations*1000)/10), // 各順位になる確率（%、小数1桁）
     };
   });
   result.sort((a,b)=>a.avgRank-b.avgRank);
@@ -2846,6 +2838,10 @@ function buildPredictHtml(pred, div){
   const d = getDivData(yr, div);
   const hasRemaining = d && d.matches.some(m=>!m.played);
 
+  // クリック展開用に予測結果をキャッシュ
+  window._predRankDist = {};
+  pred.forEach(r=>{ window._predRankDist[r.team] = r.rankDist; });
+
   let html = `<div class="slbl">${hasRemaining?'シミュレーション予想順位（1万回試行）':'最終順位（全試合終了）'}</div><div class="card">`;
   if(!pred.length){
     html += `<div class="loading">データなし</div>`;
@@ -2862,19 +2858,24 @@ function buildPredictHtml(pred, div){
       const rank = r.predRank || r.rank;
       const rc = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
       const promoBg = r.promoteProb!==null && r.promoteProb>=50 ? 'row-p' : '';
-      const poBg = r.playoffProb!==null && r.playoffProb>=50 && (r.promoteProb===null||r.promoteProb<50) ? 'row-r' : '';
+      const poBg = r.playoffProb!==null && r.playoffProb>=50 && (r.promoteProb===null||r.promoteProb<50) ? 'row-po' : '';
       const relBg = r.relegateProb!==null && r.relegateProb>=50 ? 'row-r' : '';
       const relColor = r.relegateProb!==null ? (r.relegateProb>=50?'color:var(--red);font-weight:700;':r.relegateProb>=20?'color:var(--red);':'color:var(--muted);') : '';
       const winColor = r.winProb!==null && r.winProb>=10 ? 'color:var(--gold);font-weight:700;' : '';
       html += `<tr class="${promoBg||poBg||relBg}">
         <td><span class="rn ${rc}">${rank}</span></td>
-        <td class="tl">${r.team}</td>
+        <td class="tl"><span class="team-link" onclick="toggleRankDist('${r.team.replace(/'/g,"\\'")}')">${r.team} <span style="font-size:9px;color:var(--muted);">▾</span></span></td>
         <td>${r.currentPts!==undefined?r.currentPts:'—'}</td>
         ${div>1?`<td>${r.promoteProb!==null?r.promoteProb+'%':'—'}</td>`:''}
         ${div>1?`<td>${r.playoffProb!==null?r.playoffProb+'%':'—'}</td>`:''}
         ${div<3?`<td style="${relColor}">${r.relegateProb!==null?r.relegateProb+'%':'—'}</td>`:''}
         ${div===1?`<td style="${winColor}">${r.winProb!==null?r.winProb+'%':'—'}</td>`:''}
         ${div===1?`<td>${r.best8Prob!==null?r.best8Prob+'%':'—'}</td>`:''}
+      </tr>
+      <tr id="rankdist-row-${r.team.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;">
+        <td colspan="${3+(div>1?2:0)+(div<3?1:0)+(div===1?2:0)}" style="padding:0;">
+          <div id="rankdist-body-${r.team.replace(/[^a-zA-Z0-9]/g,'_')}" style="padding:10px 13px;background:#f9fafc;text-align:left;"></div>
+        </td>
       </tr>`;
     });
     html += `</tbody></table></div>`;
@@ -2882,9 +2883,41 @@ function buildPredictHtml(pred, div){
   html += `</div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
     ※ ELOレーティングに加え、直近5試合のフォーム・ホーム/アウェイごとの傾向・直接対決成績を反映した予測です（1万回試行）。<br>
-    昇格＝1〜2位、PO率＝1〜6位（自動昇格枠含む）、降格＝下位3チームです。
+    昇格＝1〜2位、PO率＝1〜6位（自動昇格枠含む）、降格＝下位3チームです。チーム名をタップすると順位ごとの確率が見られます。
   </p>`;
   return html;
+}
+
+// チーム名タップで「順位ごとの確率」を展開表示
+function toggleRankDist(team){
+  const key = team.replace(/[^a-zA-Z0-9]/g,'_');
+  const row = document.getElementById(`rankdist-row-${key}`);
+  const body = document.getElementById(`rankdist-body-${key}`);
+  if(!row) return;
+  if(row.style.display==='none'){
+    const dist = window._predRankDist?.[team];
+    if(dist){
+      const maxP = Math.max(...dist, 0.1);
+      let inner = `<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">${team}：各順位になる確率</div>`;
+      dist.forEach((p,i)=>{
+        if(p<=0) return;
+        const barW = Math.max(2, p/maxP*100);
+        inner += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <span style="font-size:10px;color:var(--muted);width:32px;flex:0 0 auto;">${i+1}位</span>
+          <div style="flex:1;background:#e8ecf2;border-radius:3px;height:12px;overflow:hidden;">
+            <div style="width:${barW}%;height:100%;background:var(--g);"></div>
+          </div>
+          <span style="font-size:10px;color:var(--text);width:36px;flex:0 0 auto;text-align:right;">${p}%</span>
+        </div>`;
+      });
+      body.innerHTML = inner;
+    } else {
+      body.innerHTML = '<div style="font-size:11px;color:var(--muted);">データなし</div>';
+    }
+    row.style.display = '';
+  } else {
+    row.style.display = 'none';
+  }
 }
 
 function buildEloTableHtml(){
@@ -2898,7 +2931,7 @@ function buildEloTableHtml(){
       const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
       const dColor = r.delta>0?'color:var(--g)':r.delta<0?'color:var(--red)':'color:var(--muted)';
       const dSign = r.delta>0?'+':'';
-      const divColor = r.curDiv ? ['','#f5a623','#00a854','#0288d1'][r.curDiv] : 'var(--muted)';
+      const divColor = r.curDiv ? ['','#e53935','#00a854','#0288d1'][r.curDiv] : 'var(--muted)';
       const curRankStr = r.curRank ? `<span style="color:${divColor};font-weight:700;">${getDivName(r.curDiv)} ${r.curRank}位</span>` : '<span style="color:var(--muted);">—</span>';
       html += `<tr><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}</td>
         <td style="font-weight:700;">${r.rating}</td>
