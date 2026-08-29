@@ -65,6 +65,25 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .stbl-compact th{padding:5px 2px;font-size:9px;}
 .stbl-compact td{padding:5px 2px;}
 .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.heatmap-tbl{border-collapse:collapse;font-size:9px;}
+.heatmap-tbl th,.heatmap-tbl td{
+  width:24px;height:22px;min-width:24px;max-width:24px;
+  text-align:center;padding:0;border:1px solid #fff;
+}
+.heatmap-tbl th{
+  background:#f5f7fa;color:var(--muted);font-weight:700;font-size:9px;
+  position:sticky;top:0;z-index:1;
+}
+.heatmap-team{
+  position:sticky;left:0;z-index:2;background:#f5f7fa!important;
+  text-align:left!important;padding:0 6px!important;width:auto!important;
+  min-width:64px;max-width:90px;max-height:22px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;font-size:9px;
+}
+.heatmap-corner{position:sticky;left:0;top:0;z-index:3;background:#f5f7fa!important;}
+.heatmap-zero{
+  background:repeating-linear-gradient(45deg,#e4e4e4,#e4e4e4 2px,#f0f0f0 2px,#f0f0f0 4px);
+}
 .row-p{background:var(--g2);}
 .row-po{background:var(--gold2);}
 .row-r{background:var(--red2);}
@@ -325,9 +344,11 @@ canvas{display:block;max-width:100%;}
   <div class="tabs" id="dtabs-predict"></div>
   <div class="tabs" style="padding-top:0;">
     <div class="tab active" id="pr-subtab-predict" onclick="switchPredictSubtab('predict')">📊 予測</div>
+    <div class="tab" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">🔥 ヒートマップ</div>
     <div class="tab" id="pr-subtab-backtest" onclick="switchPredictSubtab('backtest')">🧪 精度検証</div>
   </div>
   <div id="predict-area"></div>
+  <div id="heatmap-area" style="display:none;"></div>
   <div id="backtest-area" style="display:none;"></div>
 </div>
 
@@ -2547,15 +2568,71 @@ let predictCache = {}; // key: `${yr}-${div}` -> pred結果
 function predictCacheKey(yr, div){ return `${yr}-${div}`; }
 
 // ページを開いた時・タブ/年度切替時に呼ぶ（再計算はしない）
-// 予測タブ内の「予測 / 精度検証」切り替え
+// 予測タブ内の「予測 / ヒートマップ / 精度検証」切り替え
 function switchPredictSubtab(tab){
   document.getElementById('pr-subtab-predict').classList.toggle('active', tab==='predict');
+  document.getElementById('pr-subtab-heatmap').classList.toggle('active', tab==='heatmap');
   document.getElementById('pr-subtab-backtest').classList.toggle('active', tab==='backtest');
   document.getElementById('predict-area').style.display = tab==='predict' ? '' : 'none';
+  document.getElementById('heatmap-area').style.display = tab==='heatmap' ? '' : 'none';
   document.getElementById('backtest-area').style.display = tab==='backtest' ? '' : 'none';
+  if(tab==='heatmap') renderHeatmap();
   if(tab==='backtest' && !document.getElementById('backtest-area').dataset.rendered){
     renderBacktestIntro();
   }
+}
+
+// 順位確率ヒートマップ（チーム×順位のマトリクス、グラデーションで重み付け・0%は灰色網掛け）
+function renderHeatmap(){
+  const yr = document.getElementById('pr-yr').value;
+  const div = curDiv.predict;
+  const el = document.getElementById('heatmap-area');
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+
+  const key = predictCacheKey(yr, div);
+  const pred = predictCache[key];
+  if(!pred){
+    el.innerHTML = `<div class="loading">まだ予測が実行されていません<br>
+      <span style="font-size:11px;">「📊 予測」タブの「🔄 予測を更新」ボタンを押してください</span></div>`;
+    return;
+  }
+
+  const n = pred.length;
+  const baseColor = ['','229,57,53','0,168,84','2,136,209'][div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
+
+  let html = `<div class="slbl">順位確率ヒートマップ（${n}チーム×${n}順位）</div>`;
+  html += `<div class="card"><div class="tbl-scroll"><table class="heatmap-tbl">`;
+
+  // ヘッダー行（順位）
+  html += `<tr><th class="heatmap-corner"></th>`;
+  for(let r=1;r<=n;r++) html += `<th>${r}</th>`;
+  html += `</tr>`;
+
+  // 各チームの行（平均順位が良い順に並べる＝predRank順）
+  pred.forEach(row=>{
+    html += `<tr><th class="heatmap-team">${row.team}</th>`;
+    const dist = row.rankDist || [];
+    for(let i=0;i<n;i++){
+      const p = dist[i] || 0;
+      if(p<=0){
+        html += `<td class="heatmap-zero" title="${row.team}：${i+1}位 0%"></td>`;
+      } else {
+        const alpha = Math.min(0.92, Math.max(0.10, p/45));
+        const label = p>=10 ? Math.round(p) : p;
+        const textColor = alpha>0.55 ? '#fff' : '#1a2333';
+        html += `<td style="background:rgba(${baseColor},${alpha});color:${textColor};" title="${row.team}：${i+1}位 ${p}%">${label}</td>`;
+      }
+    }
+    html += `</tr>`;
+  });
+
+  html += `</table></div></div>`;
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+    ※ 縦＝チーム（予想順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
+    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝確率0%（その順位は起こり得ない）
+  </p>`;
+
+  el.innerHTML = html;
 }
 
 function renderBacktestIntro(){
