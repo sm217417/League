@@ -17,43 +17,57 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:#f5f7fa;color:#1
   --bg:#f5f7fa;--white:#fff;
   --border:#dde3ed;--muted:#6b7c93;
   --d1:#e53935;--d2:#00a854;--d3:#0288d1;
+  --shadow-sm:0 1px 3px rgba(26,35,51,.06),0 1px 2px rgba(26,35,51,.04);
+  --shadow-md:0 2px 8px rgba(26,35,51,.08),0 1px 3px rgba(26,35,51,.05);
 }
 /* ボトムナビ */
-.bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid var(--border);display:flex;height:58px;}
-.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--muted);font-size:9px;border:none;background:none;padding:4px 0;min-width:0;overflow:hidden;white-space:nowrap;}
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid var(--border);display:flex;height:58px;box-shadow:0 -2px 10px rgba(26,35,51,.06);}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--muted);font-size:9px;border:none;background:none;padding:4px 0;min-width:0;overflow:hidden;white-space:nowrap;position:relative;transition:color .15s;}
 .bnav-btn.active{color:var(--g);}
-.bnav-icon{font-size:18px;line-height:1;}
+.bnav-btn.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:20px;height:2px;background:var(--g);border-radius:0 0 2px 2px;}
+.bnav-btn:active{opacity:.6;}
+.bnav-icon{font-size:18px;line-height:1;transition:transform .15s;}
+.bnav-btn.active .bnav-icon{transform:translateY(-1px);}
 /* ページ */
 .page{display:none;}
-.page.active{display:block;}
+.page.active{display:block;animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
 /* ヘッダー */
 .phdr{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border);padding:11px 14px 9px;}
 .ptitle{font-size:17px;font-weight:700;}
 /* カード */
-.card{background:#fff;border:1px solid var(--border);border-radius:10px;margin:8px 12px;overflow:hidden;}
-.card-hdr{padding:11px 13px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.card{background:#fff;border:1px solid var(--border);border-radius:10px;margin:8px 12px;overflow:hidden;box-shadow:var(--shadow-sm);}
+.card-hdr{padding:11px 13px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:#fafbfc;}
 .card-body{padding:12px 13px;}
 /* タブ */
 .tabs{display:flex;gap:6px;padding:9px 12px;overflow-x:auto;scrollbar-width:none;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex-shrink:0;padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
-.tab.active{background:var(--g);color:#fff;border-color:var(--g);}
+.tab.active{background:var(--g);color:#fff;border-color:var(--g);box-shadow:0 1px 4px rgba(0,168,84,.35);}
+.tab:active{transform:scale(.96);}
 /* フォーム */
 .field{margin-bottom:10px;}
 .field label{display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px;}
-input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;outline:none;-webkit-appearance:none;}
-input:focus,select:focus,textarea:focus{border-color:var(--g);}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;outline:none;-webkit-appearance:none;transition:border-color .15s,box-shadow .15s;}
+input:focus,select:focus,textarea:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(0,168,84,.12);}
+select{
+  padding-right:26px!important;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7c93' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
 textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .row{display:flex;gap:8px;}
 .row input,.row select{flex:1;}
 /* ボタン */
-.btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:inherit;transition:all .12s;}
-.btn-g{background:var(--g);color:#fff;}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:inherit;transition:transform .1s,background .12s,opacity .12s;}
+.btn:active{transform:scale(.96);}
+.btn-g{background:var(--g);color:#fff;box-shadow:0 1px 4px rgba(0,168,84,.3);}
 .btn-g:active{background:#007a3d;}
 .btn-sub{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
 .btn-sub:active{background:var(--border);}
 .btn-sm{padding:6px 12px;font-size:12px;}
 .btn-full{width:100%;}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important;}
 /* 順位表 */
 .stbl{width:100%;border-collapse:collapse;font-size:12px;}
 .stbl th{padding:6px 3px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap;}
@@ -104,10 +118,11 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .mteam.home{text-align:right;}
 .mcenter{display:flex;flex-direction:column;align-items:center;gap:5px;}
 .srow{display:flex;align-items:center;gap:5px;}
-.sinp{width:42px;height:38px;text-align:center;font-size:19px;font-weight:700;border:1px solid var(--border);border-radius:7px;background:var(--bg);}
-.sinp:focus{border-color:var(--g);background:#fff;}
+.sinp{width:44px;height:44px;text-align:center;font-size:19px;font-weight:700;border:1px solid var(--border);border-radius:8px;background:var(--bg);transition:border-color .15s,box-shadow .15s;}
+.sinp:focus{border-color:var(--g);background:#fff;box-shadow:0 0 0 3px rgba(0,168,84,.12);}
 .ssep{font-size:17px;color:var(--muted);font-weight:700;}
-.sbtn{font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700;}
+.sbtn{font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:700;transition:transform .1s,background .15s,color .15s,border-color .15s;}
+.sbtn:active{transform:scale(.94);}
 .sbtn.saved{border-color:var(--g);color:var(--g);background:var(--g2);}
 .rlbl{padding:7px 13px 3px;font-size:11px;font-weight:700;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--border);}
 /* H2H */
@@ -116,12 +131,15 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .h2h-lbl{font-size:11px;color:var(--muted);margin-top:3px;}
 /* チームフィルター */
 .tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:10px 13px;}
-.tchip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;}
+.tchip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;transition:transform .1s,background .15s,color .15s;}
+.tchip:active{transform:scale(.94);}
 .tchip.on{color:#fff;border-color:transparent;}
 /* セクションラベル */
 .slbl{font-size:11px;font-weight:700;color:var(--muted);padding:10px 13px 3px;}
 /* ローディング */
 .loading{text-align:center;padding:28px;color:var(--muted);font-size:13px;}
+.loading-active{animation:pulse 1.2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
 /* チャート */
 .chart-wrap{overflow-x:auto;padding:10px 13px;}
 canvas{display:block;max-width:100%;}
@@ -354,7 +372,27 @@ canvas{display:block;max-width:100%;}
 </nav>
 
 <script>
-// ══ DB (localStorage) ══
+/* ════════════════════════════════════════════════════════════
+ * WINNER PRO — 目次
+ * ────────────────────────────────────────────────────────────
+ *  1. DB / 初期化・状態管理
+ *  2. ページ切替・部門タブ共通処理
+ *  3. 順位計算・順位表（ホーム）
+ *  4. 試合生成・試合入力（リーグ）
+ *  5. 設定：自動昇降格・シーズン開始
+ *  6. 設定：リーグ名／カップ名／チーム編集
+ *  7. 設定：CSVエクスポート・シーズン削除
+ *  8. 対戦成績（H2H）
+ *  9. 記録タブ：歴代／年度別推移／シーズン内変動／対戦
+ * 10. 昇格プレーオフ（PO）
+ * 11. カップ戦（複数大会・自動抽選／手動入力）
+ * 12. 設定：過去データのフォーム入力
+ * 13. ELOレーティング計算
+ * 14. 予測：チーム傾向・攻撃力守備力（ポアソン予測モデル）
+ * 15. 予測タブ：ELO表示／ヒートマップ
+ * ════════════════════════════════════════════════════════════ */
+
+// ══ 1. DB (localStorage) ══
 const KEY = 'winner-final-v1';
 function load(){
   let d;
@@ -406,7 +444,7 @@ function migrateAddPlayedAt(d){
   d._seq = seq;
 }
 
-// ══ 状態 ══
+// ══ 1. 状態管理 ══
 let db = load();
 let curDiv = {home:1, matches:1, po:1, predict:1};
 let allMatches = {};
@@ -416,7 +454,7 @@ let trendSel = new Set(), isSel = new Set();
 let teDiv = 1;
 let leagueSubtab = 'matches'; // 'matches' | 'po'
 
-// ══ 初期化 ══
+// ══ 1. 初期化 ══
 function init(){
   const yr = new Date().getFullYear();
   refreshSeasonSelects();
@@ -449,7 +487,7 @@ function latestSeason(){
   return seasons.length ? seasons[0] : null;
 }
 
-// ══ ページ切替 ══
+// ══ 2. ページ切替 ══
 function go(name, btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
@@ -473,22 +511,26 @@ function switchLeagueSubtab(tab){
   if(tab==='po') renderPlayoff();
 }
 
-// ══ 部門タブ ══
+// ══ 2. 部門タブ共通処理 ══
 function buildDivTabs(id, active, cb){
   const dn = db.config.div_names;
+  const dc = {1:'var(--d1)',2:'var(--d2)',3:'var(--d3)'};
   document.getElementById(id).innerHTML = [1,2,3].map(d=>`
     <div class="tab ${d===active?'active':''}" data-d="${d}"
-      onclick="this.parentNode.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');(${cb.toString()})(${d})">
+      style="${d===active?`background:${dc[d]};border-color:${dc[d]};`:''}"
+      onclick="this.parentNode.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.style.background='';t.style.borderColor='';});
+               this.classList.add('active');this.style.background='${dc[d]}';this.style.borderColor='${dc[d]}';
+               (${cb.toString()})(${d})">
       ${dn[d]||d+'部'}
     </div>`).join('');
 }
 
-// ══ データアクセス ══
+// ══ 2. データアクセス共通処理 ══
 function getSeasons(){ return Object.keys(db.seasons).sort((a,b)=>parseInt(b)-parseInt(a)); }
 function getDivData(yr,div){ yr=String(yr); return db.seasons[yr]?.divisions?.[String(div)]; }
 function getDivName(div){ return db.config.div_names[div]||div+'部'; }
 
-// ══ 順位計算 ══
+// ══ 3. 順位計算 ══
 function calcStandings(yr,div){ yr=String(yr);
   const d = getDivData(yr,div);
   if(!d) return [];
@@ -506,7 +548,7 @@ function calcStandings(yr,div){ yr=String(yr);
   return Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf).map((r,i)=>({...r,rank:i+1}));
 }
 
-// ══ 順位表 ══
+// ══ 3. 順位表（ホーム） ══
 function loadStandings(){
   const yr = document.getElementById('home-yr').value;
   const div = curDiv.home;
@@ -542,7 +584,7 @@ function loadStandings(){
   document.getElementById('standings-area').innerHTML=html;
 }
 
-// ══ 試合生成 ══
+// ══ 4. 試合生成 ══
 function genMatches(teams){
   const t=[...teams];
   if(t.length%2)t.push(null);
@@ -573,7 +615,7 @@ function getContinuousRound(matches, leg, round){
   return maxRound1 + round;
 }
 
-// ══ 試合入力 ══
+// ══ 4. 試合入力（リーグ） ══
 function loadMatches(){
   const yr = latestSeason();
   const div = curDiv.matches;
@@ -805,8 +847,7 @@ function saveMatch(yr,div,id){
   allMatches[div]=[...(getDivData(yr,div)?.matches||[])];
 }
 
-// ══ 設定 ══
-// ══ 自動昇降格 + シーズン一括開始 ══
+// ══ 5. 設定：自動昇降格＋シーズン一括開始 ══
 const AUTO_PROMOTE_N = 2;   // 自動昇格枠（1〜2位）
 const AUTO_RELEGATE_N = 3;  // 自動降格枠（下位3チーム）
 
@@ -993,7 +1034,7 @@ function saveCupName(slot){
   buildCupSlotTabs();
 }
 
-// ══ チーム編集（追加・削除） ══
+// ══ 6. チーム編集（追加・削除） ══
 // 全シーズン・全部門（＋カップ戦）を対象に、指定チームが1試合でも組まれているか調べる
 function teamHasAnyMatches(name){
   for(const yr in db.seasons){
@@ -1090,7 +1131,7 @@ function restoreTeam(name){
   buildH2HSelects();
 }
 
-// ══ CSVエクスポート（バックアップ） ══
+// ══ 7. CSVエクスポート（バックアップ） ══
 function exportMatchesCSV(){
   const msg = document.getElementById('csv-export-msg');
   const rows = [['year','division','matchday','home_team','away_team','home_goals','away_goals']];
@@ -1130,7 +1171,7 @@ function exportMatchesCSV(){
 }
 
 
-// ══ シーズン削除 ══
+// ══ 7. シーズン削除 ══
 function deleteSeason(){
   const sel = document.getElementById('del-yr');
   const yr = sel.value;
@@ -1160,7 +1201,7 @@ function deleteSeason(){
   setTimeout(()=>msg.textContent='', 3000);
 }
 
-// ══ 対戦成績 ══
+// ══ 8. 対戦成績（H2H） ══
 function buildH2HSelects(){
   const elA = document.getElementById('h2h-a'), elB = document.getElementById('h2h-b');
   if(!elA || !elB) return; // 記録タブの対戦サブタブを開いていない時はDOM未生成のため何もしない
@@ -1241,7 +1282,7 @@ function showH2H(){
   document.getElementById('h2h-area').innerHTML=html;
 }
 
-// ══ 歴代 ══
+// ══ 9. 記録タブ：歴代 ══
 function switchHistTab(tab, el){
   document.querySelectorAll('#pg-history .tab').forEach(t=>t.classList.remove('active'));
   if(el)el.classList.add('active');
@@ -1588,7 +1629,7 @@ function drawIsChart(snaps,allTeams){
   });
 }
 
-// ══ 昇格PO ══
+// ══ 10. 昇格プレーオフ（PO） ══
 function renderPlayoff(){
   const yr=latestSeason();
   const div=curDiv.po;
@@ -1722,7 +1763,7 @@ function savePO(yr,div,id){
 }
 
 // ══════════════════════════════════
-// カップ戦（ルヴァンカップ方式）
+// 11. カップ戦（複数大会対応・自動抽選／手動入力）
 // ══════════════════════════════════
 const CUP_SEED_COUNT = 8; // シード枠数
 
@@ -2199,7 +2240,7 @@ function switchCupCreateMode(mode, slot){
   document.getElementById(`cup-create-manual-${slot}`).style.display = mode==='manual' ? '' : 'none';
 }
 
-// ══ 過去データ フォーム入力 ══
+// ══ 12. 過去データのフォーム入力 ══
 function setTeamRows(){
   const n = parseInt(document.getElementById('pi-count').value) || 10;
   const wrap = document.getElementById('pi-rows');
@@ -2302,7 +2343,7 @@ function exportCurrentData(){
   }
 }
 
-// ══ ユーティリティ ══
+// ══ 12. ユーティリティ ══
 function sorted(arr){ return [...arr].sort(); }
 
 // 順位取得（past_standings優先、なければcalcStandings）
@@ -2317,7 +2358,7 @@ function getStandings(yr, div){
 }
 
 // ══════════════════════════════════
-// ELOレーティング
+// 13. ELOレーティング計算
 // ══════════════════════════════════
 const ELO_BASE = 1500;
 const ELO_K = 24;
@@ -2487,7 +2528,7 @@ function getEloTableAll(){
 }
 
 // ══════════════════════════════════
-// 傾向分析ヘルパー（フォーム・ホーム/アウェイ・直接対決）
+// 14. 予測：チーム傾向・攻撃力守備力ヘルパー
 // ══════════════════════════════════
 
 // チームの「直近フォーム」「ホーム成績」「アウェイ成績」を計算（当該シーズン内）
@@ -2733,7 +2774,7 @@ function predictStandings(yr, div, simulations=20000){
 }
 
 // ══════════════════════════════════
-// ELO予測タブ（更新ボタンで試行、結果はキャッシュ）
+// 15. 予測タブ：ELO表示／ヒートマップ
 // ══════════════════════════════════
 let predictCache = {}; // key: `${yr}-${div}` -> pred結果
 
@@ -2866,7 +2907,7 @@ function runPrediction(){
   const el = document.getElementById('predict-area');
   if(!yr){ alert('シーズンを選択してください'); return; }
 
-  el.innerHTML = `<div class="loading">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
+  el.innerHTML = `<div class="loading loading-active">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
 
   // 描画を先に反映させてから重い処理を実行
   setTimeout(()=>{
@@ -2905,16 +2946,6 @@ function buildEloTableHtml(){
     ※ 「年度累計」は、そのチームの現在の年度が始まった時点からの増減です。
   </p>`;
   return html;
-}
-
-// ══════════════════════════════════
-// 昇格・PO自動判定（順位表・PO画面で使用する共通関数）
-// ══════════════════════════════════
-function getPromoStatus(rank, total, promoteN, poEnabled, poN){
-  // 戻り値: 'promote' | 'playoff' | null
-  if(rank <= promoteN) return 'promote';
-  if(poEnabled && rank > promoteN && rank <= promoteN + poN) return 'playoff';
-  return null;
 }
 
 init();
