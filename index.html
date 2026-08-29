@@ -77,8 +77,8 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .heatmap-team{
   position:sticky;left:0;z-index:2;background:#f5f7fa!important;
   text-align:left!important;padding:0 6px!important;width:auto!important;
-  min-width:64px;max-width:90px;max-height:22px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap;font-size:9px;
+  min-width:72px;max-width:100px;max-height:22px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;font-size:10px;
 }
 .heatmap-corner{position:sticky;left:0;top:0;z-index:3;background:#f5f7fa!important;}
 .heatmap-zero{
@@ -227,6 +227,11 @@ canvas{display:block;max-width:100%;}
   </div>
 
   <div class="card">
+    <div class="card-hdr">🏷️ カップ名</div>
+    <div class="card-body" id="cupname-area"></div>
+  </div>
+
+  <div class="card">
     <div class="card-hdr">📂 過去データの入力</div>
     <div class="card-body">
 
@@ -294,20 +299,6 @@ canvas{display:block;max-width:100%;}
   </div>
 </div>
 
-<!-- 対戦成績 -->
-<div class="page" id="pg-h2h">
-  <div class="phdr">
-    <div class="ptitle">🆚 対戦成績</div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:7px;">
-      <select id="h2h-a" style="flex:1;font-size:13px;padding:6px 8px;"></select>
-      <span style="color:var(--muted);font-weight:700;font-size:13px;">VS</span>
-      <select id="h2h-b" style="flex:1;font-size:13px;padding:6px 8px;"></select>
-      <button class="btn btn-g btn-sm" onclick="showH2H()">検索</button>
-    </div>
-  </div>
-  <div id="h2h-area"></div>
-</div>
-
 <!-- 記録 -->
 <div class="page" id="pg-history">
   <div class="phdr">
@@ -316,6 +307,7 @@ canvas{display:block;max-width:100%;}
       <div class="tab active" onclick="switchHistTab('alltime',this)">🏆 歴代</div>
       <div class="tab" onclick="switchHistTab('trend',this)">📊 年度別</div>
       <div class="tab" onclick="switchHistTab('inseason',this)">🔄 シーズン内</div>
+      <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
     </div>
   </div>
   <div id="history-area"></div>
@@ -329,6 +321,7 @@ canvas{display:block;max-width:100%;}
       <select id="cup-yr" style="font-size:13px;padding:6px 8px;" onchange="renderCup()"></select>
     </div>
   </div>
+  <div class="tabs" id="cup-slot-tabs"></div>
   <div id="cup-area"></div>
 </div>
 
@@ -338,18 +331,16 @@ canvas{display:block;max-width:100%;}
     <div class="ptitle">🔮 ELO予測</div>
     <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
       <select id="pr-yr" style="font-size:13px;padding:6px 8px;" onchange="renderPredictPage()"></select>
-      <button class="btn btn-g btn-sm" onclick="runPrediction()">🔄 予測を更新（1万回試行）</button>
+      <button class="btn btn-g btn-sm" onclick="runPrediction()">🔄 予測を更新（2万回試行）</button>
     </div>
   </div>
   <div class="tabs" id="dtabs-predict"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="pr-subtab-predict" onclick="switchPredictSubtab('predict')">📊 予測</div>
+    <div class="tab active" id="pr-subtab-elo" onclick="switchPredictSubtab('elo')">📈 ELO</div>
     <div class="tab" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">🔥 ヒートマップ</div>
-    <div class="tab" id="pr-subtab-backtest" onclick="switchPredictSubtab('backtest')">🧪 精度検証</div>
   </div>
   <div id="predict-area"></div>
   <div id="heatmap-area" style="display:none;"></div>
-  <div id="backtest-area" style="display:none;"></div>
 </div>
 
 <!-- ボトムナビ -->
@@ -358,7 +349,6 @@ canvas{display:block;max-width:100%;}
   <button class="bnav-btn" onclick="go('matches',this)"><span class="bnav-icon">🏆</span>リーグ</button>
   <button class="bnav-btn" onclick="go('cup',this)"><span class="bnav-icon">🏅</span>カップ</button>
   <button class="bnav-btn" onclick="go('setup',this)"><span class="bnav-icon">⚙️</span>設定</button>
-  <button class="bnav-btn" onclick="go('h2h',this)"><span class="bnav-icon">🆚</span>対戦</button>
   <button class="bnav-btn" onclick="go('history',this)"><span class="bnav-icon">📖</span>記録</button>
   <button class="bnav-btn" onclick="go('predict',this)"><span class="bnav-icon">🔮</span>予測</button>
 </nav>
@@ -370,14 +360,29 @@ function load(){
   let d;
   try{ d = JSON.parse(localStorage.getItem(KEY))||init_db(); }catch(e){ d = init_db(); }
   if(!d.cups) d.cups = {};
+  if(!d.config) d.config = {};
+  if(!d.config.cup_names) d.config.cup_names = {1:"天皇杯",2:"ルヴァンカップ"};
   if(!d.promotionLog) d.promotionLog = [];
   if(d._seq === undefined){
     migrateAddPlayedAt(d);
   }
+  migrateCupsToSlots(d);
   return d;
 }
+
+// 旧構造（db.cups[yr] = カップ1つ）を新構造（db.cups[yr][slot] = カップ）へ移行する。
+// 旧データはカップ戦スロット1（天皇杯）として扱う。
+function migrateCupsToSlots(d){
+  Object.keys(d.cups).forEach(yr=>{
+    const c = d.cups[yr];
+    if(c && c.matches && !c['1'] && !c['2']){
+      // 旧フラット構造を検出（.matchesが直下にある＝未移行）
+      d.cups[yr] = { "1": c };
+    }
+  });
+}
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"} }, elo:{}, cups:{}, _seq:1, promotionLog:[] }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, elo:{}, cups:{}, _seq:1, promotionLog:[] }; }
 
 // 既存データに「保存順（playedAt）」を後付けで割り振る一回限りのマイグレーション。
 // これまでの計算順（年度昇順→部門1→2→3→その年のカップ戦）をそのまま踏襲した連番を付与し、
@@ -420,6 +425,7 @@ function init(){
   buildDivTabs('dtabs-predict', 1, d=>{ curDiv.predict=d; renderPredictPage(); });
   renderTeamEditor();
   buildDivNameForm();
+  buildCupNameForm();
   buildH2HSelects();
   renderTeamEditor();
   loadStandings();
@@ -964,6 +970,27 @@ function saveDivName(div){
   renderTeamEditor();
 }
 
+function buildCupNameForm(){
+  let html='';
+  [1,2].forEach(slot=>{
+    html+=`<div class="field"><label>カップ${slot}</label>
+      <div class="row">
+        <input type="text" id="cn-${slot}" value="${getCupName(slot)}">
+        <button class="btn btn-sub btn-sm" style="flex:0 0 auto;" onclick="saveCupName(${slot})">保存</button>
+      </div></div>`;
+  });
+  document.getElementById('cupname-area').innerHTML=html;
+}
+
+function saveCupName(slot){
+  const v=document.getElementById(`cn-${slot}`).value.trim();
+  if(!v)return;
+  db.config.cup_names[slot]=v;
+  save(db);
+  alert('保存しました');
+  buildCupSlotTabs();
+}
+
 // ══ チーム編集（追加・削除） ══
 // 全シーズン・全部門（＋カップ戦）を対象に、指定チームが1試合でも組まれているか調べる
 function teamHasAnyMatches(name){
@@ -975,8 +1002,10 @@ function teamHasAnyMatches(name){
     }
   }
   for(const yr in db.cups){
-    const matches = db.cups[yr].matches || [];
-    if(matches.some(m=>m.teamA===name || m.teamB===name)) return true;
+    for(const slot in db.cups[yr]){
+      const matches = db.cups[yr][slot].matches || [];
+      if(matches.some(m=>m.teamA===name || m.teamB===name)) return true;
+    }
   }
   return false;
 }
@@ -1131,11 +1160,13 @@ function deleteSeason(){
 
 // ══ 対戦成績 ══
 function buildH2HSelects(){
+  const elA = document.getElementById('h2h-a'), elB = document.getElementById('h2h-b');
+  if(!elA || !elB) return; // 記録タブの対戦サブタブを開いていない時はDOM未生成のため何もしない
   const teams=Object.keys(db.teams).filter(t=>db.teams[t].active);
   const opts=teams.map(t=>`<option value="${t}">${t}</option>`).join('');
-  document.getElementById('h2h-a').innerHTML=opts;
-  document.getElementById('h2h-b').innerHTML=opts;
-  if(teams.length>1)document.getElementById('h2h-b').selectedIndex=1;
+  elA.innerHTML=opts;
+  elB.innerHTML=opts;
+  if(teams.length>1) elB.selectedIndex=1;
 }
 
 function showH2H(){
@@ -1169,19 +1200,22 @@ function showH2H(){
         });
       }
     });
-    // カップ戦
-    const cup = db.cups?.[yr];
-    if(cup && cup.matches){
-      cup.matches.forEach(m=>{
-        if(!m.played||m.walkover)return;
-        if(!({[m.teamA]:1,[m.teamB]:1}[a]&&{[m.teamA]:1,[m.teamB]:1}[b]))return;
-        const aH=m.teamA===a,ag=aH?m.scoreA:m.scoreB,bg=aH?m.scoreB:m.scoreA;
-        gfA+=ag;gfB+=bg;
-        const res=ag>bg?'W':ag<bg?'L':'D';
-        if(res==='W')wA++;else if(res==='L')wB++;else draws++;
-        hist.push({yr,divLabel:'カップ戦',leg:0,round:m.round,home:m.teamA,away:m.teamB,hs:m.scoreA,as_:m.scoreB,res,order:m.playedAt||0});
-      });
-    }
+    // カップ戦（2枠対応）
+    [1,2].forEach(slot=>{
+      const cup = db.cups?.[yr]?.[slot];
+      if(cup && cup.matches){
+        const cupName = getCupName(slot);
+        cup.matches.forEach(m=>{
+          if(!m.played||m.walkover)return;
+          if(!({[m.teamA]:1,[m.teamB]:1}[a]&&{[m.teamA]:1,[m.teamB]:1}[b]))return;
+          const aH=m.teamA===a,ag=aH?m.scoreA:m.scoreB,bg=aH?m.scoreB:m.scoreA;
+          gfA+=ag;gfB+=bg;
+          const res=ag>bg?'W':ag<bg?'L':'D';
+          if(res==='W')wA++;else if(res==='L')wB++;else draws++;
+          hist.push({yr,divLabel:cupName,leg:0,round:m.round,home:m.teamA,away:m.teamB,hs:m.scoreA,as_:m.scoreB,res,order:m.playedAt||0});
+        });
+      }
+    });
   });
   hist.sort((x,y)=>parseInt(y.yr)-parseInt(x.yr) || y.order-x.order);
   let html=`<div class="card"><div class="h2h-sum">
@@ -1212,7 +1246,27 @@ function switchHistTab(tab, el){
   histTab=tab;
   if(tab==='alltime')renderHistAlltime();
   else if(tab==='trend')renderHistTrend();
+  else if(tab==='h2h')renderH2HInHistory();
   else renderHistInseason();
+}
+
+// 記録タブ内「対戦」サブタブ：チーム選択UI＋結果表示（旧pg-h2hページの内容をここに統合）
+function renderH2HInHistory(){
+  const el = document.getElementById('history-area');
+  const teams = Object.keys(db.teams).filter(t=>db.teams[t].active);
+  const opts = teams.map(t=>`<option value="${t}">${t}</option>`).join('');
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;padding:10px 12px;">
+      <select id="h2h-a" style="flex:1;font-size:13px;padding:6px 8px;">${opts}</select>
+      <span style="color:var(--muted);font-weight:700;font-size:13px;">VS</span>
+      <select id="h2h-b" style="flex:1;font-size:13px;padding:6px 8px;">${opts}</select>
+      <button class="btn btn-g btn-sm" onclick="showH2H()">検索</button>
+    </div>
+    <div id="h2h-area"></div>`;
+  if(teams.length>1){
+    document.getElementById('h2h-b').selectedIndex = 1;
+    showH2H();
+  }
 }
 
 function renderHistAlltime(){
@@ -1696,10 +1750,14 @@ function shuffleArr(arr){
   return a;
 }
 
-function getCup(yr){ return db.cups[String(yr)] || null; }
+function getCup(yr, slot){ return db.cups?.[String(yr)]?.[String(slot)] || null; }
 
-// カップ戦を新規作成：ELO上位8チームをシード、残りは1部/2部/3部から均等にランダム抽選
-function createCup(yr, size){
+function getCupName(slot){
+  return db.config?.cup_names?.[slot] || (slot==1 ? '天皇杯' : 'ルヴァンカップ');
+}
+
+// カップ戦を新規作成（自動抽選）：ELO上位8チームをシード、残りは1部/2部/3部から均等にランダム抽選
+function createCup(yr, slot, size){
   const eloRows = getEloTableAll();
   if(eloRows.length < CUP_SEED_COUNT){
     alert('チーム数が不足しています（ELOランキングに最低8チーム必要）');
@@ -1818,21 +1876,85 @@ function createCup(yr, size){
     }
   });
 
-  // ── 1回戦の組み合わせ生成（不戦勝は即座に自動勝ち上がり） ──
+  const matches = buildCupMatchesFromSlots(slots, bracketSize);
+
+  db.cups[String(yr)] = db.cups[String(yr)] || {};
+  db.cups[String(yr)][String(slot)] = {
+    size, bracketSize, seeds, participants: slots, matches, winner:null, winnerDiv:null, mode:'auto',
+  };
+
+  // 不戦勝を次ラウンドへ自動反映
+  resolveCupWalkovers(String(yr), slot);
+
+  save(db);
+  renderCup();
+}
+
+// 手動でカップ戦を作成：ペーストされたチーム名の順番通りに1回戦を組む（不戦勝は末尾に自動補完）
+function createCupManual(yr, slot){
+  const raw = document.getElementById(`cup-manual-teams-${slot}`).value;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length < 2){
+    alert('2チーム以上、1行1チームで入力してください');
+    return;
+  }
+  // 重複除去はせず、入力順をそのまま尊重（同名が2つあればエラー扱いにする）
+  const uniq = new Set(lines);
+  if(uniq.size !== lines.length){
+    alert('チーム名が重複しています。確認してください。');
+    return;
+  }
+
+  const size = lines.length;
+  const bracketSize = Math.pow(2, Math.ceil(Math.log2(size)));
+  const byeCount = bracketSize - size; // 常に size 未満になる（2の累乗の性質上）ので、不戦勝同士が組むことはない
+
+  // 不戦勝は「入力順の末尾チーム」から1つずつ専用ペアとして割り当て、
+  // 残りの先頭チームたちは入力順のまま2チームずつペアにする（不戦勝同士が組むのを防ぐ）
+  const remaining = size - byeCount; // 常に偶数になる
+  const slots = [];
+  for(let i=0;i<remaining;i++){
+    const name = lines[i];
+    slots.push({team:name, div: db.teams[name]?.div||null, seed:null, bye:false});
+  }
+  for(let i=remaining;i<size;i++){
+    const name = lines[i];
+    slots.push({team:name, div: db.teams[name]?.div||null, seed:null, bye:false});
+    slots.push({team:null, div:null, seed:null, bye:true});
+  }
+
+  const matches = buildCupMatchesFromSlots(slots, bracketSize);
+
+  // 未登録チームは自動でdb.teamsに追加（部門不明の場合は1部扱いにしておく。後でチーム編集から修正可能）
+  lines.forEach(name=>{ if(!db.teams[name]) db.teams[name]={div:1, active:true}; });
+
+  db.cups[String(yr)] = db.cups[String(yr)] || {};
+  db.cups[String(yr)][String(slot)] = {
+    size, bracketSize, seeds:[], participants: slots, matches, winner:null, winnerDiv:null, mode:'manual',
+  };
+
+  resolveCupWalkovers(String(yr), slot);
+
+  save(db);
+  renderTeamEditor();
+  renderCup();
+}
+
+// スロット配列（{team,div,seed,bye}の配列）から1回戦〜決勝までの試合リストを生成
+function buildCupMatchesFromSlots(slots, bracketSize){
   const matches = [];
   let id=0;
   for(let i=0;i<bracketSize/2;i++){
     const a = slots[i*2], b = slots[i*2+1];
     const isWalkover = a.bye !== b.bye; // どちらか一方だけが不戦勝＝ウォークオーバー
-    const m = {
+    matches.push({
       id:id++, round:1,
       teamA:a.team, teamB:b.team,
       divA:a.div, divB:b.div,
       seedA:a.seed, seedB:b.seed,
       scoreA:null, scoreB:null,
       played: isWalkover, walkover: isWalkover,
-    };
-    matches.push(m);
+    });
   }
   let prev=bracketSize/2, rnd=2;
   while(prev>1){
@@ -1841,21 +1963,12 @@ function createCup(yr, size){
     }
     prev/=2; rnd++;
   }
-
-  db.cups[String(yr)] = {
-    size, bracketSize, seeds, participants: slots, matches, winner:null, winnerDiv:null,
-  };
-
-  // 不戦勝を次ラウンドへ自動反映
-  resolveCupWalkovers(String(yr));
-
-  save(db);
-  renderCup();
+  return matches;
 }
 
 // 不戦勝（ウォークオーバー）を次ラウンドへ自動的に勝ち上がらせる
-function resolveCupWalkovers(yr){
-  const cup = getCup(yr); if(!cup) return;
+function resolveCupWalkovers(yr, slot){
+  const cup = getCup(yr, slot); if(!cup) return;
   const rounds = [...new Set(cup.matches.map(m=>m.round))].sort((a,b)=>a-b);
   rounds.forEach(rnd=>{
     const rms = cup.matches.filter(m=>m.round===rnd);
@@ -1878,19 +1991,19 @@ function resolveCupWalkovers(yr){
   });
 }
 
-function deleteCup(yr){
-  if(!confirm(`${yr}年目のカップ戦を削除します。よろしいですか？`)) return;
-  delete db.cups[String(yr)];
+function deleteCup(yr, slot){
+  if(!confirm(`${getCupName(slot)}（${yr}年目）を削除します。よろしいですか？`)) return;
+  if(db.cups[String(yr)]) delete db.cups[String(yr)][String(slot)];
   save(db);
   renderCup();
 }
 
-function saveCupMatch(yr, id){
-  const sa=parseInt(document.getElementById(`csa-${id}`)?.value);
-  const sb=parseInt(document.getElementById(`csb-${id}`)?.value);
+function saveCupMatch(yr, slot, id){
+  const sa=parseInt(document.getElementById(`csa-${slot}-${id}`)?.value);
+  const sb=parseInt(document.getElementById(`csb-${slot}-${id}`)?.value);
   if(isNaN(sa)||isNaN(sb))return;
   if(sa===sb){alert('カップ戦は引き分けなし（PK等で決着した想定でスコアを入力してください）');return;}
-  const cup=getCup(yr); if(!cup) return;
+  const cup=getCup(yr, slot); if(!cup) return;
   const m=cup.matches.find(x=>x.id===id); if(!m) return;
   m.scoreA=sa; m.scoreB=sb; m.played=true;
   m.playedAt = db._seq++; // 保存順を記録（ELO計算の時系列判定に使用）
@@ -1913,44 +2026,89 @@ function saveCupMatch(yr, id){
   renderCup();
 }
 
-let cupRoundOpen = {}; // yr -> {round: boolean} 回戦ごとの表示/非表示状態
-function toggleCupRound(yr, rnd){
-  if(!cupRoundOpen[yr]) cupRoundOpen[yr] = {};
-  const cur = cupRoundOpen[yr][rnd] !== false;
-  cupRoundOpen[yr][rnd] = !cur;
+let cupRoundOpen = {}; // "yr-slot" -> {round: boolean} 回戦ごとの表示/非表示状態
+function toggleCupRound(yr, slot, rnd){
+  const key = `${yr}-${slot}`;
+  if(!cupRoundOpen[key]) cupRoundOpen[key] = {};
+  const cur = cupRoundOpen[key][rnd] !== false;
+  cupRoundOpen[key][rnd] = !cur;
   renderCup();
+}
+
+let curCupSlot = 1; // 現在表示中のカップスロット（1 or 2）
+
+function switchCupSlot(slot){
+  curCupSlot = slot;
+  document.querySelectorAll('#cup-slot-tabs .tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(`cup-slot-tab-${slot}`).classList.add('active');
+  renderCup();
+}
+
+function buildCupSlotTabs(){
+  const el = document.getElementById('cup-slot-tabs');
+  if(!el) return;
+  el.innerHTML = [1,2].map(slot=>
+    `<div class="tab ${slot===curCupSlot?'active':''}" id="cup-slot-tab-${slot}" onclick="switchCupSlot(${slot})">${getCupName(slot)}</div>`
+  ).join('');
 }
 
 function renderCup(){
   const yr = document.getElementById('cup-yr').value;
   const el = document.getElementById('cup-area');
+  buildCupSlotTabs();
   if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
 
-  const cup = getCup(yr);
+  const slot = curCupSlot;
+  const cup = getCup(yr, slot);
+  const cupName = getCupName(slot);
 
   if(!cup){
-    // 新規作成フォーム
+    // 新規作成フォーム（自動抽選 / 手動入力を選択）
     el.innerHTML = `
       <div class="card">
-        <div class="card-hdr">🏅 新規カップ戦を作成</div>
+        <div class="card-hdr">🏅 ${cupName}を新規作成</div>
         <div class="card-body">
-          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
-            現在のELOレーティング上位<strong>8チーム</strong>がシードとして自動配置されます。<br>
-            残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。<br>
-            2の累乗でないチーム数（例：60）を入力した場合、次の2の累乗まで<strong>不戦勝（BYE）</strong>で埋め、
-            不戦勝は<strong>シード上位のチームから優先的に</strong>付与されます。
-          </p>
-          <div class="field">
-            <label>参加チーム数（8以上・自由入力可）</label>
-            <input type="number" id="cup-size" value="32" min="8" max="200">
+          <div class="tabs" style="padding:0 0 8px;">
+            <div class="tab active" id="cup-create-tab-auto" onclick="switchCupCreateMode('auto',${slot})">🎲 自動抽選</div>
+            <div class="tab" id="cup-create-tab-manual" onclick="switchCupCreateMode('manual',${slot})">✍️ 手動入力</div>
           </div>
-          <div class="tabs" style="padding:0 0 4px;">
-            <div class="tab" onclick="document.getElementById('cup-size').value=16">16</div>
-            <div class="tab" onclick="document.getElementById('cup-size').value=32">32</div>
-            <div class="tab" onclick="document.getElementById('cup-size').value=60">60</div>
-            <div class="tab" onclick="document.getElementById('cup-size').value=64">64</div>
+
+          <div id="cup-create-auto-${slot}">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
+              現在のELOレーティング上位<strong>8チーム</strong>がシードとして自動配置されます。<br>
+              残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。<br>
+              2の累乗でないチーム数を入力した場合、次の2の累乗まで<strong>不戦勝（BYE）</strong>で埋め、
+              不戦勝は<strong>シード上位のチームから優先的に</strong>付与されます。
+            </p>
+            <div class="field">
+              <label>参加チーム数（8以上・自由入力可）</label>
+              <input type="number" id="cup-size" value="32" min="8" max="200">
+            </div>
+            <div class="tabs" style="padding:0 0 4px;">
+              <div class="tab" onclick="document.getElementById('cup-size').value=16">16</div>
+              <div class="tab" onclick="document.getElementById('cup-size').value=32">32</div>
+              <div class="tab" onclick="document.getElementById('cup-size').value=60">60</div>
+              <div class="tab" onclick="document.getElementById('cup-size').value=64">64</div>
+            </div>
+            <button class="btn btn-g btn-full" onclick="createCup('${yr}', ${slot}, +document.getElementById('cup-size').value)">🎲 抽選して${cupName}を作成</button>
           </div>
-          <button class="btn btn-g btn-full" onclick="createCup('${yr}', +document.getElementById('cup-size').value)">🎲 抽選してカップ戦を作成</button>
+
+          <div id="cup-create-manual-${slot}" style="display:none;">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
+              実際の抽選結果などをそのまま反映したい場合はこちら。<br>
+              1行1チームで、<strong>対戦させたい順番のまま</strong>貼り付けてください（1行目 vs 2行目、3行目 vs 4行目…の順で1回戦が組まれます）。<br>
+              2の累乗に満たない場合、末尾のチームから順に不戦勝（1回戦シード）が自動で付与されます。
+            </p>
+            <div class="field">
+              <label>参加チーム（1行1チーム・対戦順）</label>
+              <textarea id="cup-manual-teams-${slot}" placeholder="浦和レッズ
+鹿島アントラーズ
+横浜FM
+川崎フロンターレ
+..." style="min-height:160px;font-family:monospace;font-size:12px;"></textarea>
+            </div>
+            <button class="btn btn-g btn-full" onclick="createCupManual('${yr}', ${slot})">📥 この順番で${cupName}を作成</button>
+          </div>
         </div>
       </div>`;
     return;
@@ -1961,34 +2119,36 @@ function renderCup(){
 
   let html = `<div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:12px;color:var(--muted);">参加${cup.size}チーム（シード${CUP_SEED_COUNT}）</div>
-      <button class="btn btn-sm" style="background:var(--red2);color:var(--red);border:1px solid #ffcdd2;" onclick="deleteCup('${yr}')">🗑️ 削除してやり直す</button>
+      <div style="font-size:12px;color:var(--muted);">${cupName}：参加${cup.size}チーム${cup.mode==='auto'?`（シード${CUP_SEED_COUNT}）`:'（手動作成）'}</div>
+      <button class="btn btn-sm" style="background:var(--red2);color:var(--red);border:1px solid #ffcdd2;" onclick="deleteCup('${yr}',${slot})">🗑️ 削除してやり直す</button>
     </div>
   </div>`;
 
-  // シード一覧
-  html += `<div class="slbl">シード（ELO上位8）</div><div class="card"><div style="padding:6px 13px;">`;
-  cup.seeds.forEach((t,i)=>{
-    const d = db.teams[t]?.div;
-    html += `<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;">
-      <span style="width:24px;color:var(--gold);font-weight:700;">${i+1}</span>
-      <span style="flex:1;font-weight:700;">${t}</span>
-      <span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]||'—'}</span>
-    </div>`;
-  });
-  html += `</div></div>`;
+  // シード一覧（自動抽選のときのみ表示）
+  if(cup.mode==='auto' && cup.seeds && cup.seeds.length){
+    html += `<div class="slbl">シード（ELO上位8）</div><div class="card"><div style="padding:6px 13px;">`;
+    cup.seeds.forEach((t,i)=>{
+      const d = db.teams[t]?.div;
+      html += `<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;">
+        <span style="width:24px;color:var(--gold);font-weight:700;">${i+1}</span>
+        <span style="flex:1;font-weight:700;">${t}</span>
+        <span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]||'—'}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
 
   // トーナメント表（回戦ごとに表示/非表示を切り替え可能）
   html += `<div class="slbl">トーナメント表</div>`;
   const rounds = [...new Set(cup.matches.map(m=>m.round))].sort((a,b)=>a-b);
   const maxRound = Math.max(...rounds);
-  if(!cupRoundOpen[yr]) cupRoundOpen[yr] = {};
+  const roundOpenKey = `${yr}-${slot}`;
+  if(!cupRoundOpen[roundOpenKey]) cupRoundOpen[roundOpenKey] = {};
   rounds.forEach(rnd=>{
     const rms = cup.matches.filter(m=>m.round===rnd);
     const rName = rnd===maxRound?'決勝':rnd===maxRound-1?'準決勝':rnd===maxRound-2?'準々決勝':`${rnd}回戦`;
-    // デフォルトは開いた状態（未設定なら true）
-    const isOpen = cupRoundOpen[yr][rnd] !== false;
-    html += `<div class="slbl" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCupRound('${yr}',${rnd})">
+    const isOpen = cupRoundOpen[roundOpenKey][rnd] !== false;
+    html += `<div class="slbl" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCupRound('${yr}',${slot},${rnd})">
       <span>${rName}</span><span style="font-size:14px;">${isOpen?'▾':'▸'}</span>
     </div>`;
     if(!isOpen) return;
@@ -2008,11 +2168,11 @@ function renderCup(){
       html += `<div class="card"><div class="po-match">
         <div class="po-team ${aW?'winner':m.played?'loser':''}">
           ${teamLabel(m.teamA, m.divA, m.seedA, aIsBye)}
-          ${m.teamA && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+          ${m.teamA && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
         </div>
         <div class="po-team ${bW?'winner':m.played?'loser':''}">
           ${teamLabel(m.teamB, m.divB, m.seedB, bIsBye)}
-          ${m.teamB && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${m.id}" onchange="saveCupMatch('${yr}',${m.id})">`:''}
+          ${m.teamB && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
         </div>
       </div></div>`;
     });
@@ -2021,13 +2181,20 @@ function renderCup(){
   if(cup.winner){
     html += `<div class="card" style="text-align:center;padding:24px;background:var(--gold2);border-color:var(--gold);">
       <div style="font-size:30px;">🏆</div>
-      <div style="font-size:16px;font-weight:700;color:var(--gold);margin-top:6px;">カップ戦優勝</div>
+      <div style="font-size:16px;font-weight:700;color:var(--gold);margin-top:6px;">${cupName} 優勝</div>
       <div style="font-size:20px;font-weight:700;margin-top:6px;">${cup.winner}</div>
-      <div style="margin-top:4px;"><span class="cup-div-badge" style="background:${divColor(cup.winnerDiv)}22;color:${divColor(cup.winnerDiv)};">${div_names_short[cup.winnerDiv]}</span></div>
+      <div style="margin-top:4px;"><span class="cup-div-badge" style="background:${divColor(cup.winnerDiv)}22;color:${divColor(cup.winnerDiv)};">${div_names_short[cup.winnerDiv]||'—'}</span></div>
     </div>`;
   }
 
   el.innerHTML = html;
+}
+
+function switchCupCreateMode(mode, slot){
+  document.getElementById('cup-create-tab-auto').classList.toggle('active', mode==='auto');
+  document.getElementById('cup-create-tab-manual').classList.toggle('active', mode==='manual');
+  document.getElementById(`cup-create-auto-${slot}`).style.display = mode==='auto' ? '' : 'none';
+  document.getElementById(`cup-create-manual-${slot}`).style.display = mode==='manual' ? '' : 'none';
 }
 
 // ══ 過去データ フォーム入力 ══
@@ -2153,6 +2320,7 @@ function getStandings(yr, div){
 const ELO_BASE = 1500;
 const ELO_K = 24;
 const ELO_K_PROVISIONAL = 40; // 経験の浅いチームは変動を大きくする（暫定レーティング）
+const CUP_ELO_SCALE = 0.5; // カップ戦のELO変動幅はリーグ戦より小さくする（一発勝負のトーナメントのため）
 const PROVISIONAL_GAMES = 10; // この試合数未満は暫定扱い
 const ELO_HOME_ADV_DEFAULT = 50; // データ不足時のフォールバック値
 
@@ -2205,13 +2373,15 @@ function calcAllElo(){
           order: m.playedAt !== undefined ? m.playedAt : 0 });
       });
     });
-    const cup = getCup(yr);
-    if(cup && cup.matches){
-      cup.matches.filter(m=>m.played && !m.walkover && m.teamA && m.teamB).forEach(m=>{
-        events.push({ type:'cup', yr, m,
-          order: m.playedAt !== undefined ? m.playedAt : 0 });
-      });
-    }
+    [1,2].forEach(cupSlot=>{
+      const cup = getCup(yr, cupSlot);
+      if(cup && cup.matches){
+        cup.matches.filter(m=>m.played && !m.walkover && m.teamA && m.teamB).forEach(m=>{
+          events.push({ type:'cup', yr, cupSlot, m,
+            order: m.playedAt !== undefined ? m.playedAt : 0 });
+        });
+      }
+    });
   });
 
   // playedAtで時系列ソート（未設定＝0のレガシーデータは先頭に来るが、通常は移行処理で必ず付与される）
@@ -2239,10 +2409,10 @@ function calcAllElo(){
       history[h]=history[h]||[]; history[h].push({yr:ev.yr,div:ev.div,round:m.round,leg:m.leg,rating:newRh,playedAt:ev.order});
       history[a]=history[a]||[]; history[a].push({yr:ev.yr,div:ev.div,round:m.round,leg:m.leg,rating:newRa,playedAt:ev.order});
     } else {
-      // カップ戦（不戦勝は除外・中立会場想定でホームアドバンテージなし）
+      // カップ戦（不戦勝は除外・中立会場想定でホームアドバンテージなし・変動幅はリーグ戦より小さめ）
       const h=m.teamA, a=m.teamB;
       const Rh=getR(h), Ra=getR(a);
-      const Kh=getK(h), Ka=getK(a);
+      const Kh=getK(h)*CUP_ELO_SCALE, Ka=getK(a)*CUP_ELO_SCALE;
       const Eh = 1/(1+Math.pow(10,-(Rh-Ra)/400));
       const Ea = 1-Eh;
       let Sh;
@@ -2256,8 +2426,8 @@ function calcAllElo(){
       const newRa = Ra + Ka*gMult*(Sa-Ea);
       elo[h]=newRh; elo[a]=newRa;
       bumpGames(h); bumpGames(a);
-      history[h]=history[h]||[]; history[h].push({yr:ev.yr,div:'cup',round:m.round,leg:0,rating:newRh,playedAt:ev.order});
-      history[a]=history[a]||[]; history[a].push({yr:ev.yr,div:'cup',round:m.round,leg:0,rating:newRa,playedAt:ev.order});
+      history[h]=history[h]||[]; history[h].push({yr:ev.yr,div:`cup${ev.cupSlot}`,round:m.round,leg:0,rating:newRh,playedAt:ev.order});
+      history[a]=history[a]||[]; history[a].push({yr:ev.yr,div:`cup${ev.cupSlot}`,round:m.round,leg:0,rating:newRa,playedAt:ev.order});
     }
   });
 
@@ -2431,7 +2601,7 @@ function getLeagueAvgGoals(){
 
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
 // フォーム・ホーム/アウェイ傾向・直接対決を加味
-function predictStandings(yr, div, simulations=10000){
+function predictStandings(yr, div, simulations=20000){
   const d = getDivData(yr, div);
   if(!d) return [];
   const {elo} = calcAllElo();
@@ -2570,16 +2740,11 @@ function predictCacheKey(yr, div){ return `${yr}-${div}`; }
 // ページを開いた時・タブ/年度切替時に呼ぶ（再計算はしない）
 // 予測タブ内の「予測 / ヒートマップ / 精度検証」切り替え
 function switchPredictSubtab(tab){
-  document.getElementById('pr-subtab-predict').classList.toggle('active', tab==='predict');
+  document.getElementById('pr-subtab-elo').classList.toggle('active', tab==='elo');
   document.getElementById('pr-subtab-heatmap').classList.toggle('active', tab==='heatmap');
-  document.getElementById('pr-subtab-backtest').classList.toggle('active', tab==='backtest');
-  document.getElementById('predict-area').style.display = tab==='predict' ? '' : 'none';
+  document.getElementById('predict-area').style.display = tab==='elo' ? '' : 'none';
   document.getElementById('heatmap-area').style.display = tab==='heatmap' ? '' : 'none';
-  document.getElementById('backtest-area').style.display = tab==='backtest' ? '' : 'none';
   if(tab==='heatmap') renderHeatmap();
-  if(tab==='backtest' && !document.getElementById('backtest-area').dataset.rendered){
-    renderBacktestIntro();
-  }
 }
 
 // 順位確率ヒートマップ（チーム×順位のマトリクス、グラデーションで重み付け・0%は灰色網掛け）
@@ -2593,9 +2758,15 @@ function renderHeatmap(){
   const pred = predictCache[key];
   if(!pred){
     el.innerHTML = `<div class="loading">まだ予測が実行されていません<br>
-      <span style="font-size:11px;">「📊 予測」タブの「🔄 予測を更新」ボタンを押してください</span></div>`;
+      <span style="font-size:11px;">上の「🔄 予測を更新」ボタンを押してください</span></div>`;
     return;
   }
+
+  // 現在の実際の順位順に並べ替え（予測順ではなく現在順位順で表示）
+  const currentStandings = calcStandings(yr, div);
+  const currentRankMap = {};
+  currentStandings.forEach(r=>{ currentRankMap[r.team]=r.rank; });
+  const predByCurrentOrder = [...pred].sort((a,b)=>(currentRankMap[a.team]||999)-(currentRankMap[b.team]||999));
 
   const n = pred.length;
   const baseColor = ['','229,57,53','0,168,84','2,136,209'][div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
@@ -2608,8 +2779,8 @@ function renderHeatmap(){
   for(let r=1;r<=n;r++) html += `<th>${r}</th>`;
   html += `</tr>`;
 
-  // 各チームの行（平均順位が良い順に並べる＝predRank順）
-  pred.forEach(row=>{
+  // 各チームの行（現在の実際の順位順に並べる）
+  predByCurrentOrder.forEach(row=>{
     html += `<tr><th class="heatmap-team">${row.team}</th>`;
     const dist = row.rankDist || [];
     for(let i=0;i<n;i++){
@@ -2628,373 +2799,38 @@ function renderHeatmap(){
 
   html += `</table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ 縦＝チーム（予想順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
+    ※ 縦＝チーム（現在の順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
     <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝確率0%（その順位は起こり得ない）
   </p>`;
 
   el.innerHTML = html;
 }
 
-function renderBacktestIntro(){
-  const el = document.getElementById('backtest-area');
-  el.dataset.rendered = '1';
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-body">
-        <p style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:12px;">
-          過去に終了したシーズンについて、「そのシーズン開始時点のデータだけ」を使って予測をやり直し、実際の最終順位とどれだけ近かったかを検証します。<br>
-          複数シーズン分まとめて実行するため、少し時間がかかります。
-        </p>
-        <button class="btn btn-g btn-full" onclick="runBacktest()">🧪 精度検証を実行</button>
-        <div id="backtest-result"></div>
-      </div>
-    </div>`;
-}
-
-// バックテスト：完了済みの各シーズン・各部門について、
-// 「そのシーズン開始前の全データ」のみでELO/攻撃力・守備力を計算し、
-// シーズン全体をシミュレートして実際の最終順位との誤差を測る。
-function runBacktest(){
-  const resultEl = document.getElementById('backtest-result');
-  resultEl.innerHTML = `<div class="loading">🧪 検証中…（シーズン数によっては数秒かかります）</div>`;
-
-  setTimeout(()=>{
-    const seasons = getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
-    const rows = []; // {yr,div,maeRank,championHit,promoteHit,relegateHit,poolSize}
-
-    seasons.forEach(yr=>{
-      [1,2,3].forEach(div=>{
-        const d = getDivData(yr, div);
-        if(!d || !d.matches) return;
-        const allPlayed = d.matches.length>0 && d.matches.every(m=>m.played);
-        if(!allPlayed) return; // 完了済みシーズンのみ対象
-
-        const backtestResult = backtestOneSeason(yr, div);
-        if(backtestResult) rows.push(backtestResult);
-      });
-    });
-
-    if(!rows.length){
-      resultEl.innerHTML = `<div class="loading" style="margin-top:12px;">検証できる「完了済みシーズン」がありません</div>`;
-      return;
-    }
-
-    const avgMae = rows.reduce((s,r)=>s+r.maeRank,0)/rows.length;
-    const championHitRate = rows.filter(r=>r.championHit).length/rows.length*100;
-    const promoteHitRates = rows.filter(r=>r.promoteTotal>0);
-    const avgPromoteHitRate = promoteHitRates.length ? promoteHitRates.reduce((s,r)=>s+r.promoteHitRate,0)/promoteHitRates.length : null;
-    const relegateHitRates = rows.filter(r=>r.relegateTotal>0);
-    const avgRelegateHitRate = relegateHitRates.length ? relegateHitRates.reduce((s,r)=>s+r.relegateHitRate,0)/relegateHitRates.length : null;
-
-    let html = `<div class="slbl">検証結果（${rows.length}シーズン×部門）</div>`;
-    html += `<div class="stat-pills" style="padding:0 0 4px;">
-      <div class="stat-pill"><div class="stat-pill-val">${avgMae.toFixed(2)}</div><div class="stat-pill-lbl">平均順位誤差</div></div>
-      <div class="stat-pill"><div class="stat-pill-val">${championHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">優勝的中率</div></div>
-      ${avgPromoteHitRate!==null?`<div class="stat-pill"><div class="stat-pill-val">${avgPromoteHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">昇格圏的中率</div></div>`:''}
-      ${avgRelegateHitRate!==null?`<div class="stat-pill"><div class="stat-pill-val">${avgRelegateHitRate.toFixed(0)}%</div><div class="stat-pill-lbl">降格圏的中率</div></div>`:''}
-    </div>`;
-
-    html += `<div class="slbl">シーズン別詳細</div><div class="card">`;
-    html += `<table class="stbl"><thead><tr><th>年度</th><th>部門</th><th>順位誤差</th><th>優勝的中</th></tr></thead><tbody>`;
-    rows.forEach(r=>{
-      html += `<tr>
-        <td>${r.yr}年目</td>
-        <td>${getDivName(r.div)}</td>
-        <td>${r.maeRank.toFixed(2)}</td>
-        <td>${r.championHit?'✓':'—'}</td>
-      </tr>`;
-    });
-    html += `</tbody></table></div>`;
-    html += `<p style="font-size:11px;color:var(--muted);padding:8px 13px 16px;line-height:1.6;">
-      ※ 平均順位誤差＝予測順位と実際の最終順位の差の平均（0に近いほど良い）。<br>
-      ※ 優勝的中率＝予測1位のチームが実際にも優勝していた割合。
-    </p>`;
-
-    resultEl.innerHTML = html;
-  }, 50);
-}
-
-// 指定シーズン・部門を1件バックテストする。
-// 「そのシーズンより前の全データ」だけでELOを計算し、当シーズンを丸ごとシミュレートする。
-function backtestOneSeason(yr, div){
-  const d = getDivData(yr, div);
-  if(!d) return null;
-  const teams = d.teams;
-  const n = teams.length;
-  if(n < 2) return null;
-
-  // 「このシーズンより前のデータだけ」を使ったELOを計算（当シーズンの試合は除外）
-  const eloBefore = calcAllEloBeforeSeason(yr);
-  const getR = t => eloBefore[t]!==undefined ? eloBefore[t] : ELO_BASE;
-
-  // 攻撃力・守備力は「シーズン開始時点＝実績ゼロ」なのでELO由来の値のみ使用
-  const ad = {};
-  teams.forEach(t=>{
-    const rating = getR(t);
-    ad[t] = {
-      attack: Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/400)),
-      defense: Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/400)),
-    };
-  });
-  const leagueAvgGoals = getLeagueAvgGoals();
-
-  const matchLambdas = d.matches.map(m=>{
-    const lamH = Math.max(0.15, Math.min(5.0, leagueAvgGoals * ad[m.home].attack * ad[m.away].defense));
-    const lamA = Math.max(0.15, Math.min(5.0, leagueAvgGoals * ad[m.away].attack * ad[m.home].defense));
-    return {home:m.home, away:m.away, lamH, lamA};
-  });
-
-  const simulations = 2000; // バックテストは多シーズン処理のため試行回数を抑える
-  const rankCounts = {};
-  teams.forEach(t=>rankCounts[t]=new Array(n).fill(0));
-
-  for(let s=0; s<simulations; s++){
-    const stats = {};
-    teams.forEach(t=>stats[t]={pts:0,gd:0,gf:0});
-    matchLambdas.forEach(m=>{
-      const gh=poissonRandom(m.lamH), ga=poissonRandom(m.lamA);
-      stats[m.home].gd+=gh-ga; stats[m.away].gd+=ga-gh;
-      stats[m.home].gf+=gh; stats[m.away].gf+=ga;
-      if(gh>ga) stats[m.home].pts+=3;
-      else if(gh<ga) stats[m.away].pts+=3;
-      else { stats[m.home].pts++; stats[m.away].pts++; }
-    });
-    const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
-    ranked.forEach((t,i)=>rankCounts[t][i]++);
-  }
-
-  const predAvgRank = {};
-  teams.forEach(t=>{
-    const counts = rankCounts[t];
-    let sum=0; counts.forEach((c,i)=>sum+=c*(i+1));
-    predAvgRank[t] = sum/simulations;
-  });
-
-  // 実際の最終順位
-  const actual = calcStandings(yr, div);
-  const actualRank = {};
-  actual.forEach(r=>{ actualRank[r.team]=r.rank; });
-
-  // 予測順位（平均順位が小さい順）
-  const predRanked = teams.slice().sort((a,b)=>predAvgRank[a]-predAvgRank[b]);
-  const predRank = {};
-  predRanked.forEach((t,i)=>{ predRank[t]=i+1; });
-
-  // 平均順位誤差（MAE）
-  let errSum=0;
-  teams.forEach(t=>{ errSum += Math.abs(predRank[t]-actualRank[t]); });
-  const maeRank = errSum/teams.length;
-
-  // 優勝的中
-  const championHit = predRanked[0] === actual[0]?.team;
-
-  // 昇格圏・降格圏の的中率
-  const pN = div>1 ? AUTO_PROMOTE_N : 0;
-  const rN = div<3 ? AUTO_RELEGATE_N : 0;
-  let promoteHit=0, promoteTotal=0, relegateHit=0, relegateTotal=0;
-  if(pN>0){
-    const predPromote = new Set(predRanked.slice(0,pN));
-    const actualPromote = new Set(actual.slice(0,pN).map(r=>r.team));
-    promoteTotal = pN;
-    predPromote.forEach(t=>{ if(actualPromote.has(t)) promoteHit++; });
-  }
-  if(rN>0){
-    const predRelegate = new Set(predRanked.slice(-rN));
-    const actualRelegate = new Set(actual.slice(-rN).map(r=>r.team));
-    relegateTotal = rN;
-    predRelegate.forEach(t=>{ if(actualRelegate.has(t)) relegateHit++; });
-  }
-
-  return {
-    yr, div, maeRank, championHit,
-    promoteHitRate: promoteTotal>0 ? promoteHit/promoteTotal*100 : null, promoteTotal,
-    relegateHitRate: relegateTotal>0 ? relegateHit/relegateTotal*100 : null, relegateTotal,
-  };
-}
-
-// 指定シーズンより「前」の全データだけを使ってELOを計算する（バックテスト用）
-function calcAllEloBeforeSeason(targetYr){
-  const elo = {};
-  const gamesPlayed = {};
-  const getR = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
-  const getK = t => (gamesPlayed[t]||0) < PROVISIONAL_GAMES ? ELO_K_PROVISIONAL : ELO_K;
-  const bumpGames = t => { gamesPlayed[t] = (gamesPlayed[t]||0) + 1; };
-  const dynamicHomeAdv = computeEmpiricalHomeAdvantage();
-
-  const events = [];
-  const seasons = getSeasons().filter(yr=>parseInt(yr) < parseInt(targetYr));
-  seasons.forEach(yr=>{
-    [1,2,3].forEach(div=>{
-      const d = getDivData(yr, div);
-      if(!d || !d.matches) return;
-      d.matches.filter(m=>m.played).forEach(m=>{
-        events.push({ type:'league', yr, div, m, order: m.playedAt !== undefined ? m.playedAt : 0 });
-      });
-    });
-    const cup = getCup(yr);
-    if(cup && cup.matches){
-      cup.matches.filter(m=>m.played && !m.walkover && m.teamA && m.teamB).forEach(m=>{
-        events.push({ type:'cup', yr, m, order: m.playedAt !== undefined ? m.playedAt : 0 });
-      });
-    }
-  });
-  events.sort((x,y)=> x.order - y.order);
-
-  events.forEach(ev=>{
-    const m = ev.m;
-    if(ev.type==='league'){
-      const h=m.home, a=m.away;
-      const Rh=getR(h), Ra=getR(a);
-      const Kh=getK(h), Ka=getK(a);
-      const Eh = 1/(1+Math.pow(10,-(Rh+dynamicHomeAdv-Ra)/400));
-      const Ea = 1-Eh;
-      let Sh; if(m.home_score>m.away_score) Sh=1; else if(m.home_score<m.away_score) Sh=0; else Sh=0.5;
-      const Sa = 1-Sh;
-      const gd = Math.abs(m.home_score - m.away_score);
-      const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
-      elo[h]=Rh+Kh*gMult*(Sh-Eh); elo[a]=Ra+Ka*gMult*(Sa-Ea);
-      bumpGames(h); bumpGames(a);
-    } else {
-      const h=m.teamA, a=m.teamB;
-      const Rh=getR(h), Ra=getR(a);
-      const Kh=getK(h), Ka=getK(a);
-      const Eh = 1/(1+Math.pow(10,-(Rh-Ra)/400));
-      const Ea = 1-Eh;
-      let Sh; if(m.scoreA>m.scoreB) Sh=1; else if(m.scoreA<m.scoreB) Sh=0; else Sh=0.5;
-      const Sa = 1-Sh;
-      const gd = Math.abs(m.scoreA - m.scoreB);
-      const gMult = gd>=3 ? 1.4 : gd===2 ? 1.2 : 1.0;
-      elo[h]=Rh+Kh*gMult*(Sh-Eh); elo[a]=Ra+Ka*gMult*(Sa-Ea);
-      bumpGames(h); bumpGames(a);
-    }
-  });
-
-  return elo;
-}
-
 function renderPredictPage(){
   const yr = document.getElementById('pr-yr').value;
-  const div = curDiv.predict;
   const el = document.getElementById('predict-area');
   if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
-
-  const key = predictCacheKey(yr, div);
-  const cached = predictCache[key];
-
-  if(!cached){
-    el.innerHTML = `<div class="loading">まだ予測が実行されていません<br>
-      <span style="font-size:11px;">上の「🔄 予測を更新」ボタンを押してください</span></div>`;
-    // ELOランキングだけは常に最新表示（軽い計算のため）
-    el.innerHTML += buildEloTableHtml();
-    return;
-  }
-
-  el.innerHTML = buildPredictHtml(cached, div) + buildEloTableHtml();
+  el.innerHTML = buildEloTableHtml();
 }
 
-// 更新ボタン押下時：実際にシミュレーションを実行
+// 更新ボタン押下時：実際にシミュレーションを実行（ヒートマップ用にキャッシュする。ELO表示自体はすぐ見られる）
 function runPrediction(){
   const yr = document.getElementById('pr-yr').value;
   const div = curDiv.predict;
   const el = document.getElementById('predict-area');
   if(!yr){ alert('シーズンを選択してください'); return; }
 
-  el.innerHTML = `<div class="loading">🎲 シミュレーション実行中（1万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
+  el.innerHTML = `<div class="loading">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
 
   // 描画を先に反映させてから重い処理を実行
   setTimeout(()=>{
-    const pred = predictStandings(yr, div, 10000);
+    const pred = predictStandings(yr, div, 20000);
     const key = predictCacheKey(yr, div);
     predictCache[key] = pred;
-    el.innerHTML = buildPredictHtml(pred, div) + buildEloTableHtml();
+    el.innerHTML = buildEloTableHtml();
+    // ヒートマップを開いている最中に更新した場合は再描画
+    if(document.getElementById('pr-subtab-heatmap').classList.contains('active')) renderHeatmap();
   }, 50);
-}
-
-function buildPredictHtml(pred, div){
-  const yr = document.getElementById('pr-yr').value;
-  const d = getDivData(yr, div);
-  const hasRemaining = d && d.matches.some(m=>!m.played);
-
-  // クリック展開用に予測結果をキャッシュ
-  window._predRankDist = {};
-  pred.forEach(r=>{ window._predRankDist[r.team] = r.rankDist; });
-
-  let html = `<div class="slbl">${hasRemaining?'シミュレーション予想順位（1万回試行）':'最終順位（全試合終了）'}</div><div class="card">`;
-  if(!pred.length){
-    html += `<div class="loading">データなし</div>`;
-  } else {
-    html += `<div style="overflow-x:auto;"><table class="stbl"><thead><tr>
-      <th>#</th><th class="tl">チーム</th><th>現PT</th>
-      ${div>1?'<th>昇格率</th>':''}
-      ${div>1?'<th>PO率<br><span style="font-size:9px;font-weight:400;">(1-6位)</span></th>':''}
-      ${div<3?'<th>降格率</th>':''}
-      ${div===1?'<th>優勝率</th>':''}
-      ${div===1?'<th>ベスト8率</th>':''}
-    </tr></thead><tbody>`;
-    pred.forEach((r,i)=>{
-      const rank = r.predRank || r.rank;
-      const rc = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
-      const promoBg = r.promoteProb!==null && r.promoteProb>=50 ? 'row-p' : '';
-      const poBg = r.playoffProb!==null && r.playoffProb>=50 && (r.promoteProb===null||r.promoteProb<50) ? 'row-po' : '';
-      const relBg = r.relegateProb!==null && r.relegateProb>=50 ? 'row-r' : '';
-      const relColor = r.relegateProb!==null ? (r.relegateProb>=50?'color:var(--red);font-weight:700;':r.relegateProb>=20?'color:var(--red);':'color:var(--muted);') : '';
-      const winColor = r.winProb!==null && r.winProb>=10 ? 'color:var(--gold);font-weight:700;' : '';
-      html += `<tr class="${promoBg||poBg||relBg}">
-        <td><span class="rn ${rc}">${rank}</span></td>
-        <td class="tl"><span class="team-link" onclick="toggleRankDist('${r.team.replace(/'/g,"\\'")}')">${r.team} <span style="font-size:9px;color:var(--muted);">▾</span></span></td>
-        <td>${r.currentPts!==undefined?r.currentPts:'—'}</td>
-        ${div>1?`<td>${r.promoteProb!==null?r.promoteProb+'%':'—'}</td>`:''}
-        ${div>1?`<td>${r.playoffProb!==null?r.playoffProb+'%':'—'}</td>`:''}
-        ${div<3?`<td style="${relColor}">${r.relegateProb!==null?r.relegateProb+'%':'—'}</td>`:''}
-        ${div===1?`<td style="${winColor}">${r.winProb!==null?r.winProb+'%':'—'}</td>`:''}
-        ${div===1?`<td>${r.best8Prob!==null?r.best8Prob+'%':'—'}</td>`:''}
-      </tr>
-      <tr id="rankdist-row-${r.team.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;">
-        <td colspan="${3+(div>1?2:0)+(div<3?1:0)+(div===1?2:0)}" style="padding:0;">
-          <div id="rankdist-body-${r.team.replace(/[^a-zA-Z0-9]/g,'_')}" style="padding:10px 13px;background:#f9fafc;text-align:left;"></div>
-        </td>
-      </tr>`;
-    });
-    html += `</tbody></table></div>`;
-  }
-  html += `</div>`;
-  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ ELOレーティングに加え、直近5試合のフォーム・ホーム/アウェイごとの傾向・直接対決成績を反映した予測です（1万回試行）。<br>
-    昇格＝1〜2位、PO率＝1〜6位（自動昇格枠含む）、降格＝下位3チームです。チーム名をタップすると順位ごとの確率が見られます。
-  </p>`;
-  return html;
-}
-
-// チーム名タップで「順位ごとの確率」を展開表示
-function toggleRankDist(team){
-  const key = team.replace(/[^a-zA-Z0-9]/g,'_');
-  const row = document.getElementById(`rankdist-row-${key}`);
-  const body = document.getElementById(`rankdist-body-${key}`);
-  if(!row) return;
-  if(row.style.display==='none'){
-    const dist = window._predRankDist?.[team];
-    if(dist){
-      const maxP = Math.max(...dist, 0.1);
-      let inner = `<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">${team}：各順位になる確率</div>`;
-      dist.forEach((p,i)=>{
-        if(p<=0) return;
-        const barW = Math.max(2, p/maxP*100);
-        inner += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-          <span style="font-size:10px;color:var(--muted);width:32px;flex:0 0 auto;">${i+1}位</span>
-          <div style="flex:1;background:#e8ecf2;border-radius:3px;height:12px;overflow:hidden;">
-            <div style="width:${barW}%;height:100%;background:var(--g);"></div>
-          </div>
-          <span style="font-size:10px;color:var(--text);width:36px;flex:0 0 auto;text-align:right;">${p}%</span>
-        </div>`;
-      });
-      body.innerHTML = inner;
-    } else {
-      body.innerHTML = '<div style="font-size:11px;color:var(--muted);">データなし</div>';
-    }
-    row.style.display = '';
-  } else {
-    row.style.display = 'none';
-  }
 }
 
 function buildEloTableHtml(){
