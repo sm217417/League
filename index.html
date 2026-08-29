@@ -77,7 +77,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .heatmap-team{
   position:sticky;left:0;z-index:2;background:#f5f7fa!important;
   text-align:left!important;padding:0 6px!important;width:auto!important;
-  min-width:72px;max-width:100px;max-height:22px;overflow:hidden;
+  min-width:72px!important;max-width:100px!important;max-height:22px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;font-size:10px;
 }
 .heatmap-corner{position:sticky;left:0;top:0;z-index:3;background:#f5f7fa!important;}
@@ -551,8 +551,10 @@ function genMatches(teams){
   for(let r=0;r<N-1;r++){
     const rotated=r?[...rot.slice(-r),...rot.slice(0,-r)]:[...rot];
     const circle=[fixed,...rotated];
+    const flip = r%2===1; // 節ごとにホーム/アウェイの役割を反転させ、連続ホーム・連続アウェイの偏りを抑える
     for(let i=0;i<N/2;i++){
-      const h=circle[i],a=circle[N-1-i];
+      let h=circle[i],a=circle[N-1-i];
+      if(flip){ const tmp=h; h=a; a=tmp; }
       if(h&&a){
         result.push({id:id++,round:r+1,leg:1,home:h,away:a,home_score:null,away_score:null,played:false});
         result.push({id:id++,round:r+1,leg:2,home:a,away:h,home_score:null,away_score:null,played:false});
@@ -2748,6 +2750,41 @@ function switchPredictSubtab(tab){
 }
 
 // 順位確率ヒートマップ（チーム×順位のマトリクス、グラデーションで重み付け・0%は灰色網掛け）
+// 各チームの「理論上到達しうる順位の範囲」を概算する。
+// 残り試合を全勝/全敗した場合の最大/最小勝点をもとに、
+// 「現時点の勝点だけで既に確定的に上/下にいるチーム数」から到達可能な最良/最悪順位を見積もる。
+// ※ 対戦相手同士の兼ね合い（片方が勝てばもう片方は負ける等）までは厳密に解いていない近似値のため、
+//    実際より少し広め（＝理論上可能と判定されやすい）に出ることがある。
+function computeRankBounds(yr, div){
+  const d = getDivData(yr, div);
+  if(!d) return {};
+  const rows = calcStandings(yr, div);
+  const n = rows.length;
+  const remainingCount = {};
+  rows.forEach(r=>{ remainingCount[r.team] = 0; });
+  d.matches.filter(m=>!m.played).forEach(m=>{
+    if(remainingCount[m.home]!==undefined) remainingCount[m.home]++;
+    if(remainingCount[m.away]!==undefined) remainingCount[m.away]++;
+  });
+
+  const maxPts = {}, minPts = {};
+  rows.forEach(r=>{
+    maxPts[r.team] = r.pts + remainingCount[r.team]*3;
+    minPts[r.team] = r.pts;
+  });
+
+  const bounds = {};
+  rows.forEach(r=>{
+    const t = r.team;
+    // 最良順位：自分が全勝(maxPts)しても、現時点の勝点だけで既にそれを上回っているチームの数+1位より上には行けない
+    const guaranteedAbove = rows.filter(x=>x.team!==t && minPts[x.team] > maxPts[t]).length;
+    // 最悪順位：自分が全敗(minPts)でも、逆転不可能（相手の最大値がこちらの最小値未満）なチームの数だけ下から数えて安全
+    const guaranteedBelow = rows.filter(x=>x.team!==t && maxPts[x.team] < minPts[t]).length;
+    bounds[t] = { best: guaranteedAbove+1, worst: n-guaranteedBelow };
+  });
+  return bounds;
+}
+
 function renderHeatmap(){
   const yr = document.getElementById('pr-yr').value;
   const div = curDiv.predict;
@@ -2770,6 +2807,7 @@ function renderHeatmap(){
 
   const n = pred.length;
   const baseColor = ['','229,57,53','0,168,84','2,136,209'][div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
+  const rankBounds = computeRankBounds(yr, div);
 
   let html = `<div class="slbl">順位確率ヒートマップ（${n}チーム×${n}順位）</div>`;
   html += `<div class="card"><div class="tbl-scroll"><table class="heatmap-tbl">`;
@@ -2783,10 +2821,18 @@ function renderHeatmap(){
   predByCurrentOrder.forEach(row=>{
     html += `<tr><th class="heatmap-team">${row.team}</th>`;
     const dist = row.rankDist || [];
+    const b = rankBounds[row.team] || {best:1, worst:n};
     for(let i=0;i<n;i++){
+      const rank = i+1;
       const p = dist[i] || 0;
       if(p<=0){
-        html += `<td class="heatmap-zero" title="${row.team}：${i+1}位 0%"></td>`;
+        const reachable = rank>=b.best && rank<=b.worst;
+        if(reachable){
+          // 理論上は到達しうるが、今回の試行(2万回)では一度も出なかった順位＝網掛けと色つきの中間表現
+          html += `<td class="heatmap-rare" style="background-image:repeating-linear-gradient(45deg,rgba(${baseColor},0.22),rgba(${baseColor},0.22) 2px,rgba(${baseColor},0.06) 2px,rgba(${baseColor},0.06) 4px);" title="${row.team}：${i+1}位　理論上到達可能（試行内では0%）"></td>`;
+        } else {
+          html += `<td class="heatmap-zero" title="${row.team}：${i+1}位 0%（到達不可能）"></td>`;
+        }
       } else {
         const alpha = Math.min(0.92, Math.max(0.10, p/45));
         const label = p>=10 ? Math.round(p) : p;
@@ -2800,8 +2846,8 @@ function renderHeatmap(){
   html += `</table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
     ※ 縦＝チーム（現在の順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
-    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝確率0%（その順位は起こり得ない）
-  </p>`;
+    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝到達不可能（確定的に無理）<br>
+    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,rgba(${baseColor},0.22),rgba(${baseColor},0.22) 2px,rgba(${baseColor},0.06) 2px,rgba(${baseColor},0.06) 4px);vertical-align:middle;margin-right:4px;"></span>薄い網掛け＝理論上は到達しうるが、今回の試行では0%だった順位</p>`;
 
   el.innerHTML = html;
 }
