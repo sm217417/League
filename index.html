@@ -1399,6 +1399,12 @@ function renderHistAlltime(){
 }
 
 // ══ 通算タイトル数（リーグ優勝＋カップ優勝＋PO優勝を合算） ══
+let titlesFilterDiv = 0; // 0=全体, 1/2/3=部門別
+function switchTitlesDiv(div){
+  titlesFilterDiv = div;
+  renderTitlesRanking();
+}
+
 function renderTitlesRanking(){
   const seasons = getSeasons();
   const titles = {}; // team -> {league:n, cup:n, po:n, total:n}
@@ -1408,45 +1414,58 @@ function renderTitlesRanking(){
     titles[team].total++;
   };
 
-  // リーグ優勝（各年度・各部門の1位）
+  const targetDivs = titlesFilterDiv===0 ? [1,2,3] : [titlesFilterDiv];
+
+  // リーグ優勝（各年度・対象部門の1位）
   seasons.forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    targetDivs.forEach(div=>{
       const rows = getStandings(yr, div);
       if(rows[0]) bump(rows[0].team, 'league');
     });
   });
 
-  // カップ優勝（各年度・各スロット）
-  Object.keys(db.cups||{}).forEach(yr=>{
-    [1,2].forEach(slot=>{
-      const cup = getCup(yr, slot);
-      if(cup && cup.winner) bump(cup.winner, 'cup');
+  // カップ優勝（部門横断のため「全体」表示のときのみ加算）
+  if(titlesFilterDiv===0){
+    Object.keys(db.cups||{}).forEach(yr=>{
+      [1,2].forEach(slot=>{
+        const cup = getCup(yr, slot);
+        if(cup && cup.winner) bump(cup.winner, 'cup');
+      });
     });
-  });
+  }
 
-  // PO優勝（各年度・各部門）
+  // PO優勝（各年度・対象部門）
   seasons.forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    targetDivs.forEach(div=>{
       const d = getDivData(yr, div);
       if(d && d.playoff && d.playoff.winner) bump(d.playoff.winner, 'po');
     });
   });
 
   const ranked = Object.entries(titles).sort((a,b)=>b[1].total-a[1].total);
+  const divColors = {0:'var(--muted)',1:'var(--d1)',2:'var(--d2)',3:'var(--d3)'};
 
-  let html = `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
-    リーグ優勝・カップ優勝・昇格プレーオフ優勝を合算した「通算タイトル数」ランキングです。
+  let html = `<div class="tabs" style="padding:0 12px 8px;">
+    <div class="tab ${titlesFilterDiv===0?'active':''}" onclick="switchTitlesDiv(0)">全体</div>
+    <div class="tab ${titlesFilterDiv===1?'active':''}" onclick="switchTitlesDiv(1)" style="${titlesFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${titlesFilterDiv===2?'active':''}" onclick="switchTitlesDiv(2)" style="${titlesFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${titlesFilterDiv===3?'active':''}" onclick="switchTitlesDiv(3)" style="${titlesFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+  </div>`;
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
+    ${titlesFilterDiv===0
+      ? 'リーグ優勝・カップ優勝・昇格プレーオフ優勝を合算した「通算タイトル数」ランキングです。'
+      : `${getDivName(titlesFilterDiv)}でのリーグ優勝・昇格プレーオフ優勝を合算したランキングです（カップ戦は部門を横断するため「全体」でのみ集計されます）。`}
   </p>`;
   html += `<div class="slbl">🎖️ 通算タイトルランキング</div><div class="card">`;
   if(!ranked.length){
     html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">まだタイトル獲得記録がありません</div>`;
   } else {
-    html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>計</th><th>🏆リーグ</th><th>🏅カップ</th><th>⬆️PO</th></tr></thead><tbody>`;
+    html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>計</th><th>🏆リーグ</th>${titlesFilterDiv===0?'<th>🏅カップ</th>':''}<th>⬆️PO</th></tr></thead><tbody>`;
     ranked.slice(0,15).forEach(([team,t],i)=>{
       const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
       html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${team}</td>
         <td><span class="pts">${t.total}</span></td>
-        <td>${t.league||'—'}</td><td>${t.cup||'—'}</td><td>${t.po||'—'}</td></tr>`;
+        <td>${t.league||'—'}</td>${titlesFilterDiv===0?`<td>${t.cup||'—'}</td>`:''}<td>${t.po||'—'}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -1455,11 +1474,19 @@ function renderTitlesRanking(){
 }
 
 // ══ 最長連勝・連敗記録 ══
+let streaksFilterDiv = 0; // 0=全体, 1/2/3=部門別
+function switchStreaksDiv(div){
+  streaksFilterDiv = div;
+  renderStreaksRanking();
+}
+
 function renderStreaksRanking(){
   // 全チーム・全リーグ戦を playedAt 順に並べ、連勝/連敗の最長記録を計算する
+  // 部門を絞った場合は、その部門の試合だけを時系列に繋げて連勝/連敗を判定する
   const events = [];
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
+      if(streaksFilterDiv!==0 && div!==streaksFilterDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -1492,7 +1519,14 @@ function renderStreaksRanking(){
   bestWinStreaks.sort((a,b)=>b.streak-a.streak);
   bestLoseStreaks.sort((a,b)=>b.streak-a.streak);
 
-  let html = `<div class="slbl">🔥 最長連勝記録</div><div class="card">`;
+  let html = `<div class="tabs" style="padding:0 12px 8px;">
+    <div class="tab ${streaksFilterDiv===0?'active':''}" onclick="switchStreaksDiv(0)">全体</div>
+    <div class="tab ${streaksFilterDiv===1?'active':''}" onclick="switchStreaksDiv(1)" style="${streaksFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${streaksFilterDiv===2?'active':''}" onclick="switchStreaksDiv(2)" style="${streaksFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${streaksFilterDiv===3?'active':''}" onclick="switchStreaksDiv(3)" style="${streaksFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+  </div>`;
+
+  html += `<div class="slbl">🔥 最長連勝記録</div><div class="card">`;
   if(!bestWinStreaks.length){
     html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">データなし</div>`;
   } else {
@@ -1591,13 +1625,30 @@ function computeGiantKillings(){
   return results;
 }
 
+let upsetsFilterDiv = 0; // 0=全体, 1/2/3=部門別
+function switchUpsetsDiv(div){
+  upsetsFilterDiv = div;
+  renderUpsetsRanking();
+}
+
 function renderUpsetsRanking(){
   const el = document.getElementById('history-area');
   el.innerHTML = `<div class="loading">💥 番狂わせ度を集計中…</div>`;
   setTimeout(()=>{
-    const results = computeGiantKillings();
-    let html = `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
-      試合前のELOレーティングから見た「勝者側の勝率」が低いほど、番狂わせ度が高い試合です。
+    // ELOの正確な推移を保つため計算自体は全試合対象。表示のみ部門で絞り込む
+    const allResults = computeGiantKillings();
+    const results = upsetsFilterDiv===0
+      ? allResults
+      : allResults.filter(r=>r.isLeague && r.div===upsetsFilterDiv);
+
+    let html = `<div class="tabs" style="padding:0 12px 8px;">
+      <div class="tab ${upsetsFilterDiv===0?'active':''}" onclick="switchUpsetsDiv(0)">全体</div>
+      <div class="tab ${upsetsFilterDiv===1?'active':''}" onclick="switchUpsetsDiv(1)" style="${upsetsFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
+      <div class="tab ${upsetsFilterDiv===2?'active':''}" onclick="switchUpsetsDiv(2)" style="${upsetsFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
+      <div class="tab ${upsetsFilterDiv===3?'active':''}" onclick="switchUpsetsDiv(3)" style="${upsetsFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+    </div>`;
+    html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
+      試合前のELOレーティングから見た「勝者側の勝率」が低いほど、番狂わせ度が高い試合です。${upsetsFilterDiv!==0?'（カップ戦は部門を横断するため「全体」でのみ表示されます）':''}
     </p>`;
     html += `<div class="slbl">💥 金星（番狂わせ）ランキング TOP15</div><div class="card">`;
     if(!results.length){
