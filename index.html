@@ -335,6 +335,7 @@ canvas{display:block;max-width:100%;}
     <div class="tabs" id="hcat-sub-trends" style="padding:2px 0 7px;margin:0;display:none;">
       <div class="tab active" onclick="switchHistTab('trend',this)">📊 年度別</div>
       <div class="tab" onclick="switchHistTab('inseason',this)">🔄 シーズン内</div>
+      <div class="tab" onclick="switchHistTab('snapshot',this)">📸 開幕時R</div>
     </div>
     <div class="tabs" id="hcat-sub-analysis" style="padding:2px 0 7px;margin:0;display:none;">
       <div class="tab active" onclick="switchHistTab('profile',this)">👤 プロフィール</div>
@@ -416,6 +417,7 @@ function load(){
   if(!d.config) d.config = {};
   if(!d.config.cup_names) d.config.cup_names = {1:"天皇杯",2:"ルヴァンカップ"};
   if(!d.promotionLog) d.promotionLog = [];
+  if(!d.ratingSnapshots) d.ratingSnapshots = {};
   if(d._seq === undefined){
     migrateAddPlayedAt(d);
   }
@@ -435,7 +437,7 @@ function migrateCupsToSlots(d){
   });
 }
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, elo:{}, cups:{}, _seq:1, promotionLog:[] }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, elo:{}, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{} }; }
 
 // 既存データに「保存順（playedAt）」を後付けで割り振る一回限りのマイグレーション。
 // これまでの計算順（年度昇順→部門1→2→3→その年のカップ戦）をそのまま踏襲した連番を付与し、
@@ -844,6 +846,7 @@ function deleteManualMatch(yr, div, id){
   if(!d) return;
   d.matches = d.matches.filter(m=>m.id!==id);
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   loadMatches();
   loadStandings();
 }
@@ -959,6 +962,18 @@ function startNewSeason(){
 
   if(!confirm(confirmMsg)) return;
 
+  // ── シーズン開始時点のレーティングをスナップショット保存 ──
+  // まだ新シーズンの試合を作る前に取得することで、「その年の開幕時点の実力」を記録として残す
+  const snapElo = calcAllElo().elo;
+  const snapHA = computeTeamHomeAdvantages(snapElo);
+  if(!db.ratingSnapshots) db.ratingSnapshots = {};
+  db.ratingSnapshots[String(yr)] = {
+    savedAt: new Date().toISOString(),
+    elo: Object.fromEntries(Object.entries(snapElo).map(([t,v])=>[t, Math.round(v)])),
+    homeAdv: Object.fromEntries(Object.entries(snapHA).filter(([k])=>!k.startsWith('_')).map(([t,v])=>[t, Math.round(v)])),
+    leagueHomeAdv: Math.round(snapHA._leagueDefault),
+  };
+
   // 昇降格を適用（ログは記録のみ・現在は表示未使用）
   if(!db.promotionLog) db.promotionLog = [];
   moves.forEach(m=>{
@@ -995,6 +1010,7 @@ function startNewSeason(){
   });
 
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   refreshSeasonSelects();
   renderTeamEditor();
   loadStandings();
@@ -1116,6 +1132,7 @@ function hardDeleteTeam(name){
     }
   }
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   renderTeamEditor();
   buildH2HSelects();
 }
@@ -1206,6 +1223,7 @@ function deleteSeason(){
 
   delete db.seasons[yr];
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   refreshSeasonSelects();
   renderTeamEditor();
   loadStandings();
@@ -1310,6 +1328,7 @@ function switchHistTab(tab, el){
   else if(tab==='upsets')renderUpsetsRanking();
   else if(tab==='profile')renderTeamProfile();
   else if(tab==='trend')renderHistTrend();
+  else if(tab==='snapshot')renderRatingSnapshots();
   else if(tab==='h2h')renderH2HInHistory();
   else renderHistInseason();
 }
@@ -1330,7 +1349,7 @@ function switchHistCategory(cat){
 
 // 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
 const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
-  trend:'trends', inseason:'trends', profile:'analysis', h2h:'analysis' };
+  trend:'trends', inseason:'trends', snapshot:'trends', profile:'analysis', h2h:'analysis' };
 function restoreHistoryView(){
   const cat = HIST_TAB_CATEGORY[histTab] || 'records';
   ['records','trends','analysis'].forEach(c=>{
@@ -1672,6 +1691,74 @@ function renderUpsetsRanking(){
 }
 
 // ══ チーム別プロフィール ══
+// ══ 開幕時レーティングのスナップショット閲覧 ══
+function renderRatingSnapshots(){
+  const el = document.getElementById('history-area');
+  const snaps = db.ratingSnapshots || {};
+  const years = Object.keys(snaps).sort((a,b)=>parseInt(b)-parseInt(a));
+
+  if(!years.length){
+    el.innerHTML = `<div class="loading">まだ開幕時レーティングの記録がありません<br>
+      <span style="font-size:11px;">設定タブから新しいシーズンを開始すると、その時点のレーティングが自動保存されます</span></div>`;
+    return;
+  }
+
+  const opts = years.map(y=>`<option value="${y}">${y}年目 開幕時</option>`).join('');
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;padding:10px 12px;">
+      <select id="snap-yr" style="flex:1;font-size:13px;padding:6px 8px;" onchange="showRatingSnapshot()">${opts}</select>
+    </div>
+    <div id="snap-content"></div>`;
+  showRatingSnapshot();
+}
+
+function showRatingSnapshot(){
+  const yr = document.getElementById('snap-yr')?.value;
+  const contentEl = document.getElementById('snap-content');
+  if(!yr || !contentEl) return;
+  const snap = db.ratingSnapshots?.[yr];
+  if(!snap){ contentEl.innerHTML = '<div class="loading">データなし</div>'; return; }
+
+  // 現在のレーティングと比較して、開幕からどれだけ変動したかを表示する
+  const currentElo = calcAllElo().elo;
+  const currentHA = computeTeamHomeAdvantages(currentElo);
+
+  const rows = Object.entries(snap.elo)
+    .map(([team, rating])=>({
+      team, rating,
+      curRating: currentElo[team]!==undefined ? Math.round(currentElo[team]) : null,
+      ha: snap.homeAdv?.[team] ?? null,
+      curHa: currentHA[team]!==undefined ? Math.round(currentHA[team]) : null,
+    }))
+    .sort((a,b)=>b.rating-a.rating);
+
+  const savedDate = snap.savedAt ? new Date(snap.savedAt).toLocaleDateString('ja-JP') : '—';
+
+  let html = `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
+    ${yr}年目の開幕時点で保存されたレーティングです（保存日: ${savedDate}）。<br>
+    リーグ標準ホームアドバンテージ: ${snap.leagueHomeAdv ?? '—'}pt
+  </p>`;
+  html += `<div class="slbl">📸 ${yr}年目 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
+  html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>開幕ELO</th><th>現在</th><th>増減</th><th>HA</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=>{
+    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const delta = r.curRating!==null ? r.curRating - r.rating : null;
+    const dColor = delta>0?'color:var(--g)':delta<0?'color:var(--red)':'color:var(--muted)';
+    const dText = delta===null ? '—' : (delta>0?'+':'')+delta;
+    html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
+      <td style="font-weight:700;">${r.rating}</td>
+      <td>${r.curRating ?? '—'}</td>
+      <td style="${dColor};font-size:11px;">${dText}</td>
+      <td style="font-size:11px;color:var(--muted);">${r.ha ?? '—'}</td></tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+    ※ HA＝そのチーム固有のホームアドバンテージ（リーグ標準より大きいほどホームで強い）。
+  </p>`;
+
+  contentEl.innerHTML = html;
+}
+
 function renderTeamProfile(){
   const teams = Object.keys(db.teams).filter(t=>db.teams[t].active);
   const el = document.getElementById('history-area');
@@ -2160,6 +2247,7 @@ function redrawPO(yr,div){
   d.playoff.matches=[];
   d.playoff.winner=null;
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   renderPlayoff();
 }
 
@@ -2478,6 +2566,7 @@ function deleteCup(yr, slot){
   if(!confirm(`${getCupName(slot)}（${yr}年目）を削除します。よろしいですか？`)) return;
   if(db.cups[String(yr)]) delete db.cups[String(yr)][String(slot)];
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   renderCup();
 }
 
@@ -2764,6 +2853,7 @@ function savePastEntry(){
   });
 
   save(db);
+  invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   refreshSeasonSelects();
   msg.style.color='var(--g)';
   msg.textContent=`✓ ${year}年目 ${getDivName(div)} ${standings.length}チームを保存しました`;
@@ -2831,10 +2921,97 @@ function computeEmpiricalHomeAdvantage(){
   return Math.max(0, Math.min(150, HA));
 }
 
+// ══ チーム別ホームアドバンテージ・レーティング ══
+// リーグ標準のホームアドバンテージを出発点に、各チームが「ホームでどれだけ上振れ/下振れするか」を
+// 全シーズンの試合を通じてELOと同じ逐次更新で学習する。
+// 「ホームでめっぽう強いチーム」「ホームでも力を出せないチーム」の差を、単年の成績に依存せず捉えられる。
+const HA_K = 20;            // 1試合あたりの学習率（小さいほど安定）
+const HA_SHRINK_GAMES = 10; // この試合数までは、リーグ標準値に強く引き戻す
+const HA_MIN = -20, HA_MAX = 130;
+
+// ホームアドバンテージ・レーティングもELOと同様にキャッシュする
+let _haCache = null, _haCacheSeq = null, _haCacheSig = null;
+function computeTeamHomeAdvantages(precomputedElo){
+  const sig = eloDataSignature();
+  if(_haCache && _haCacheSeq===db._seq && _haCacheSig===sig) return _haCache;
+  _haCache = computeTeamHomeAdvantagesUncached(precomputedElo);
+  _haCacheSeq = db._seq;
+  _haCacheSig = sig;
+  return _haCache;
+}
+
+function computeTeamHomeAdvantagesUncached(precomputedElo){
+  const leagueHA = computeEmpiricalHomeAdvantage();
+  const elo = precomputedElo || calcAllElo().elo; // 既に計算済みのELOがあれば再利用（重複計算を避ける）
+  const getElo = t => elo[t]!==undefined ? elo[t] : ELO_BASE;
+
+  const ha = {}, homeGames = {};
+  const getHA = t => ha[t]!==undefined ? ha[t] : leagueHA;
+
+  // 時系列順（playedAt）に処理して、各チームのホーム時の上振れ具合を学習する
+  const events = [];
+  getSeasons().forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      d.matches.filter(m=>m.played).forEach(m=>{
+        events.push({ m, order: m.playedAt!==undefined?m.playedAt:0 });
+      });
+    });
+  });
+  events.sort((a,b)=>a.order-b.order);
+
+  events.forEach(({m})=>{
+    const h=m.home, a=m.away;
+    const curHA = getHA(h);
+    const Eh = 1/(1+Math.pow(10,-(getElo(h)+curHA-getElo(a))/400));
+    const Sh = m.home_score>m.away_score?1:m.home_score<m.away_score?0:0.5;
+    ha[h] = Math.max(HA_MIN, Math.min(HA_MAX, curHA + HA_K*(Sh-Eh)));
+    homeGames[h] = (homeGames[h]||0)+1;
+  });
+
+  // ホーム試合数が少ないチームはリーグ標準値へ引き戻す（縮小推定）
+  const result = {};
+  Object.keys(ha).forEach(t=>{
+    const g = homeGames[t]||0;
+    const w = g/(g+HA_SHRINK_GAMES);
+    result[t] = w*ha[t] + (1-w)*leagueHA;
+  });
+  result._leagueDefault = leagueHA; // 未知チーム用のフォールバック
+  return result;
+}
+
+// ══ ELO計算のキャッシュ層 ══
+// 全試合を毎回走査するのは重いため、データが変わるまで結果を使い回す。
+// db._seq（試合を保存するたびに増える連番）をデータ変更の目印として使う。
+let _eloCache = null, _eloCacheSeq = null, _eloCacheSig = null;
+
+// シーズン・カップの構成変更（削除や新規作成など）も検知するための簡易シグネチャ
+function eloDataSignature(){
+  const seasonKeys = Object.keys(db.seasons||{}).sort().join(',');
+  const cupKeys = Object.keys(db.cups||{}).map(y=>`${y}:${Object.keys(db.cups[y]||{}).sort().join('/')}`).sort().join(',');
+  return `${seasonKeys}|${cupKeys}`;
+}
+
+function calcAllElo(){
+  const sig = eloDataSignature();
+  if(_eloCache && _eloCacheSeq===db._seq && _eloCacheSig===sig) return _eloCache;
+  _eloCache = calcAllEloUncached();
+  _eloCacheSeq = db._seq;
+  _eloCacheSig = sig;
+  return _eloCache;
+}
+
+// キャッシュを明示的に破棄する（試合結果の編集・削除など、_seqが増えない変更のあとに呼ぶ）
+function invalidateEloCache(){
+  _eloCache = null; _eloCacheSeq = null; _eloCacheSig = null;
+  _haCache = null; _haCacheSeq = null; _haCacheSig = null;
+}
+
 // 全試合（リーグ戦＋カップ戦）を「実際に保存した順（playedAt）」で並べてELOを再計算。
 // これにより、カップ戦の後にリーグ戦を消化した、といった実際の時系列が正しく反映される。
 // ホームアドバンテージは過去データから実測、K値は各チームの経験試合数に応じて動的に調整する。
-function calcAllElo(){
+function calcAllEloUncached(){
   const elo = {}; // team -> rating
   const gamesPlayed = {}; // team -> 消化試合数（K値の動的調整に使用）
   const history = {}; // team -> [{yr,div,round,leg,rating,playedAt}]
@@ -3098,6 +3275,58 @@ function getLeagueAvgGoals(){
   return totalTeamGames>0 ? totalGoals/totalTeamGames : 1.35;
 }
 
+// リーグ全体の「ホームチームの平均得点」「アウェイチームの平均得点」を分けて算出する。
+// ホームアドバンテージが得点そのものにどう出ているかを、モデルの基準値として使う。
+function getLeagueAvgGoalsHomeAway(){
+  let homeGoals=0, awayGoals=0, games=0;
+  getSeasons().forEach(yr=>{
+    [1,2,3].forEach(div=>{
+      const d = getDivData(yr, div);
+      if(!d || !d.matches) return;
+      d.matches.filter(m=>m.played).forEach(m=>{
+        homeGoals += m.home_score; awayGoals += m.away_score; games++;
+      });
+    });
+  });
+  if(games < 10) return { avgHome:1.45, avgAway:1.15 }; // データ不足時の一般的な目安
+  return { avgHome: homeGoals/games, avgAway: awayGoals/games };
+}
+
+// チームの攻撃力・守備力を「ホーム時」「アウェイ時」に分けて算出する。
+// ホーム/アウェイ別だとサンプル数が半減するため、全体値(getAttackDefense)を土台に縮小推定でブレンドする。
+const HA_SHRINK = 3; // ホーム/アウェイ別の縮小推定の効き（小さいほど実績重視）
+function getHomeAwayAttackDefense(yr, div, team, overallAD, avgHome, avgAway){
+  const d = getDivData(yr, div);
+  const played = d ? (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)) : [];
+  const homeMatches = played.filter(m=>m.home===team);
+  const awayMatches = played.filter(m=>m.away===team);
+
+  const shrink = (raw, games, fallback) => {
+    const w = games/(games+HA_SHRINK);
+    return w*raw + (1-w)*fallback;
+  };
+
+  const hg = homeMatches.length, ag = awayMatches.length;
+  const homeGF = homeMatches.reduce((s,m)=>s+m.home_score,0);
+  const homeGA = homeMatches.reduce((s,m)=>s+m.away_score,0);
+  const awayGF = awayMatches.reduce((s,m)=>s+m.away_score,0);
+  const awayGA = awayMatches.reduce((s,m)=>s+m.home_score,0);
+
+  // 攻撃力＝その状況での平均得点 ÷ リーグ平均、守備力＝その状況での平均失点 ÷ リーグ平均
+  const rawHomeAtk = hg ? (homeGF/hg)/avgHome : overallAD.attack;
+  const rawHomeDef = hg ? (homeGA/hg)/avgAway : overallAD.defense;
+  const rawAwayAtk = ag ? (awayGF/ag)/avgAway : overallAD.attack;
+  const rawAwayDef = ag ? (awayGA/ag)/avgHome : overallAD.defense;
+
+  const clamp = v => Math.max(0.2, Math.min(3.0, v));
+  return {
+    homeAttack:  clamp(shrink(rawHomeAtk, hg, overallAD.attack)),
+    homeDefense: clamp(shrink(rawHomeDef, hg, overallAD.defense)),
+    awayAttack:  clamp(shrink(rawAwayAtk, ag, overallAD.attack)),
+    awayDefense: clamp(shrink(rawAwayDef, ag, overallAD.defense)),
+  };
+}
+
 // ELOによるモンテカルロ順位予測（残り試合をシミュレート）
 // フォーム・ホーム/アウェイ傾向・直接対決を加味
 function predictStandings(yr, div, simulations=20000){
@@ -3139,7 +3368,20 @@ function predictStandings(yr, div, simulations=20000){
   // ── 攻撃力・守備力を事前計算（ELO土台＋シーズン内実績で補正） ──
   const ad = {};
   teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
-  const leagueAvgGoals = getLeagueAvgGoals();
+  const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway();
+
+  // ── ホーム/アウェイ別の攻撃力・守備力を事前計算 ──
+  const adHA = {};
+  teams.forEach(t=>{ adHA[t] = getHomeAwayAttackDefense(yr, div, t, ad[t], avgHome, avgAway); });
+
+  // ── チーム別ホームアドバンテージ・レーティングを事前計算 ──
+  // 全シーズンを通じて学習した「そのチームがホームでどれだけ上振れするか」を得点期待値に反映する
+  const teamHA = computeTeamHomeAdvantages(elo); // predictStandings冒頭で取得済みのELOを再利用
+  const leagueHA = teamHA._leagueDefault;
+  const haMultiplier = t => {
+    const diff = (teamHA[t]!==undefined ? teamHA[t] : leagueHA) - leagueHA;
+    return Math.max(0.75, Math.min(1.30, 1 + diff/100 * 0.15)); // HA差100ptあたり得点±15%
+  };
 
   const NEUTRAL = 1.3; // 平均的な1試合あたり勝点の目安（3勝1分の中間的水準）
   const K_FORM = 0.15;  // 直近フォームによる期待得点の補正係数
@@ -3147,11 +3389,16 @@ function predictStandings(yr, div, simulations=20000){
   // ── 各残り試合の「期待得点（ホーム/アウェイ）」を事前計算 ──
   const matchLambdas = remainingMatches.map(m=>{
     const h=m.home, a=m.away;
-    const adH = ad[h], adA = ad[a];
 
-    // 基本の期待得点：ホームの攻撃力×アウェイの守備力×リーグ平均、の形
-    let lamH = leagueAvgGoals * adH.attack * adA.defense;
-    let lamA = leagueAvgGoals * adA.attack * adH.defense;
+    // ホームチームは「ホーム時の攻撃力」、アウェイチームは「アウェイ時の守備力」を使う（逆も同様）
+    // リーグ平均もホーム/アウェイ別の基準値を使うため、ホームアドバンテージが自然に織り込まれる
+    let lamH = avgHome * adHA[h].homeAttack * adHA[a].awayDefense;
+    let lamA = avgAway * adHA[a].awayAttack * adHA[h].homeDefense;
+
+    // チーム固有のホームアドバンテージを上乗せ（ホームが強いチームは得点増、相手は得点減）
+    const hMult = haMultiplier(h);
+    lamH *= hMult;
+    lamA /= Math.max(0.85, hMult); // ホームが強い相手のアウェイ得点は抑えられる（過剰にならないよう下限を設定）
 
     // 直近フォームを軽く反映（勝点ペースが良ければ得点期待値を少し上げる）
     const tH = getTeamTendency(yr, div, h), tA = getTeamTendency(yr, div, a);
