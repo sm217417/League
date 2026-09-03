@@ -322,13 +322,22 @@ canvas{display:block;max-width:100%;}
   <div class="phdr">
     <div class="ptitle">📖 記録</div>
     <div class="tabs" style="padding:7px 0 0;margin:0;">
+      <div class="tab active" id="hcat-tab-records" onclick="switchHistCategory('records')">📚 記録</div>
+      <div class="tab" id="hcat-tab-trends" onclick="switchHistCategory('trends')">📈 推移</div>
+      <div class="tab" id="hcat-tab-analysis" onclick="switchHistCategory('analysis')">🔍 分析</div>
+    </div>
+    <div class="tabs" id="hcat-sub-records" style="padding:2px 0 7px;margin:0;">
       <div class="tab active" onclick="switchHistTab('alltime',this)">🏆 歴代</div>
       <div class="tab" onclick="switchHistTab('titles',this)">🎖️ タイトル</div>
       <div class="tab" onclick="switchHistTab('streaks',this)">🔥 連勝記録</div>
       <div class="tab" onclick="switchHistTab('upsets',this)">💥 金星</div>
-      <div class="tab" onclick="switchHistTab('profile',this)">👤 プロフィール</div>
-      <div class="tab" onclick="switchHistTab('trend',this)">📊 年度別</div>
+    </div>
+    <div class="tabs" id="hcat-sub-trends" style="padding:2px 0 7px;margin:0;display:none;">
+      <div class="tab active" onclick="switchHistTab('trend',this)">📊 年度別</div>
       <div class="tab" onclick="switchHistTab('inseason',this)">🔄 シーズン内</div>
+    </div>
+    <div class="tabs" id="hcat-sub-analysis" style="padding:2px 0 7px;margin:0;display:none;">
+      <div class="tab active" onclick="switchHistTab('profile',this)">👤 プロフィール</div>
       <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
     </div>
   </div>
@@ -500,7 +509,7 @@ function go(name, btn){
   document.getElementById('pg-'+name).classList.add('active');
   btn.classList.add('active');
   window.scrollTo(0,0);
-  if(name==='history') switchHistTab(histTab, document.querySelector('#pg-history .tab.active'));
+  if(name==='history') restoreHistoryView();
   if(name==='matches'){ loadMatches(); renderPlayoff(); }
   if(name==='predict') renderPredictPage();
   if(name==='cup') renderCup();
@@ -1290,8 +1299,10 @@ function showH2H(){
 
 // ══ 9. 記録タブ：歴代 ══
 function switchHistTab(tab, el){
-  document.querySelectorAll('#pg-history .tab').forEach(t=>t.classList.remove('active'));
-  if(el)el.classList.add('active');
+  if(el){
+    el.parentNode.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+  }
   histTab=tab;
   if(tab==='alltime')renderHistAlltime();
   else if(tab==='titles')renderTitlesRanking();
@@ -1301,6 +1312,38 @@ function switchHistTab(tab, el){
   else if(tab==='trend')renderHistTrend();
   else if(tab==='h2h')renderH2HInHistory();
   else renderHistInseason();
+}
+
+// 記録タブのカテゴリ切替（📚記録 / 📈推移 / 🔍分析）：該当カテゴリのサブタブ行を表示し、その先頭タブを開く
+const HIST_CATEGORY_DEFAULT_TAB = { records:'alltime', trends:'trend', analysis:'profile' };
+function switchHistCategory(cat){
+  ['records','trends','analysis'].forEach(c=>{
+    document.getElementById(`hcat-tab-${c}`).classList.toggle('active', c===cat);
+    document.getElementById(`hcat-sub-${c}`).style.display = c===cat ? '' : 'none';
+  });
+  const subRow = document.getElementById(`hcat-sub-${cat}`);
+  subRow.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  const firstTab = subRow.querySelector('.tab');
+  if(firstTab) firstTab.classList.add('active');
+  switchHistTab(HIST_CATEGORY_DEFAULT_TAB[cat]);
+}
+
+// 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
+const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
+  trend:'trends', inseason:'trends', profile:'analysis', h2h:'analysis' };
+function restoreHistoryView(){
+  const cat = HIST_TAB_CATEGORY[histTab] || 'records';
+  ['records','trends','analysis'].forEach(c=>{
+    document.getElementById(`hcat-tab-${c}`).classList.toggle('active', c===cat);
+    document.getElementById(`hcat-sub-${c}`).style.display = c===cat ? '' : 'none';
+  });
+  const subRow = document.getElementById(`hcat-sub-${cat}`);
+  subRow.querySelectorAll('.tab').forEach(t=>{
+    // onclick文字列から該当タブか判定（switchHistTab('xxx',this) の xxx を見る）
+    const match = t.getAttribute('onclick')?.match(/switchHistTab\('(\w+)'/);
+    t.classList.toggle('active', match && match[1]===histTab);
+  });
+  switchHistTab(histTab); // 内容を再描画（elなしなのでタブのactive状態は変更されない）
 }
 
 // 記録タブ内「対戦」サブタブ：チーム選択UI＋結果表示（旧pg-h2hページの内容をここに統合）
