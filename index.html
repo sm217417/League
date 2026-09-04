@@ -3437,11 +3437,15 @@ function poissonRandom(lambda){
 
 // ELOを土台に、シーズン内の実績（得点・失点）で補正した攻撃力・守備力を算出。
 // 試合数が少ないうちはELO由来の値を、試合数が増えるほど実績を重視する（縮小推定）。
+// ELO_TO_STRENGTH について：
+//   期待得点は「攻撃力 × 相手の守備力」で決まるため、ELO差が攻守の両方に効いて二乗で増幅される。
+//   除数を小さくすると勝率が極端に開くので、実際のサッカーの水準（ELO差300で勝率6〜7割程度）に
+//   合わせて 800 を採用している。
+const ELO_TO_STRENGTH = 800;
 function getAttackDefense(yr, div, team, elo){
   const rating = elo[team]!==undefined ? elo[team] : ELO_BASE;
-  // ELOを攻撃力・守備力の初期値に変換（1500=平均1.0、±400で約±1.0の変化）
-  const attackFromElo = Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/400));
-  const defenseFromElo = Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/400));
+  const attackFromElo = Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/ELO_TO_STRENGTH));
+  const defenseFromElo = Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/ELO_TO_STRENGTH));
 
   const d = getDivData(yr, div);
   const played = d ? (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)) : [];
