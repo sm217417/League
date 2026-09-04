@@ -136,6 +136,14 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .tchip.on{color:#fff;border-color:transparent;}
 /* セクションラベル */
 .slbl{font-size:11px;font-weight:700;color:var(--muted);padding:10px 13px 3px;}
+/* 直近試合結果のドット表示 */
+.form-dot{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;color:#fff;font-size:9px;font-weight:700;margin-right:3px;vertical-align:middle;}
+/* 統計サマリーのピル表示（プロフィール等） */
+.stat-pills{display:flex;gap:8px;padding:0 12px;overflow-x:auto;scrollbar-width:none;}
+.stat-pills::-webkit-scrollbar{display:none;}
+.stat-pill{flex:1;min-width:80px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center;box-shadow:var(--shadow-sm);}
+.stat-pill-val{font-size:18px;font-weight:700;color:var(--g);line-height:1.2;}
+.stat-pill-lbl{font-size:10px;color:var(--muted);margin-top:3px;}
 /* ローディング */
 .loading{text-align:center;padding:28px;color:var(--muted);font-size:13px;}
 .loading-active{animation:pulse 1.2s ease-in-out infinite;}
@@ -169,6 +177,10 @@ canvas{display:block;max-width:100%;}
     </div>
   </div>
   <div class="tabs" id="dtabs-home"></div>
+  <div class="tabs" style="padding-top:0;">
+    <div class="tab active" id="stview-tab-detail" onclick="switchStandingsView('detail')">📋 詳細</div>
+    <div class="tab" id="stview-tab-form" onclick="switchStandingsView('form')">📈 直近5試合</div>
+  </div>
   <div id="standings-area"><div class="loading">データなし</div></div>
 </div>
 
@@ -186,9 +198,11 @@ canvas{display:block;max-width:100%;}
   <div class="tabs" id="dtabs-matches"></div>
   <div class="tabs" style="padding-top:0;">
     <div class="tab active" id="lg-subtab-matches" onclick="switchLeagueSubtab('matches')">⚽ 試合</div>
+    <div class="tab" id="lg-subtab-forecast" onclick="switchLeagueSubtab('forecast')">🔮 次節予想</div>
     <div class="tab" id="lg-subtab-po" onclick="switchLeagueSubtab('po')">🏅 プレーオフ</div>
   </div>
   <div id="matches-area"><div class="loading">データなし</div></div>
+  <div id="forecast-area" style="display:none;"></div>
   <div id="playoff-area" style="display:none;"></div>
 </div>
 
@@ -521,10 +535,13 @@ function go(name, btn){
 function switchLeagueSubtab(tab){
   leagueSubtab = tab;
   document.getElementById('lg-subtab-matches').classList.toggle('active', tab==='matches');
+  document.getElementById('lg-subtab-forecast').classList.toggle('active', tab==='forecast');
   document.getElementById('lg-subtab-po').classList.toggle('active', tab==='po');
   document.getElementById('matches-area').style.display = tab==='matches' ? '' : 'none';
+  document.getElementById('forecast-area').style.display = tab==='forecast' ? '' : 'none';
   document.getElementById('playoff-area').style.display = tab==='po' ? '' : 'none';
   document.querySelector('#pg-matches .phdr > div:nth-child(2)').style.display = tab==='matches' ? 'flex' : 'none';
+  if(tab==='forecast') renderNextRoundForecast();
   if(tab==='po') renderPlayoff();
 }
 
@@ -566,6 +583,34 @@ function calcStandings(yr,div){ yr=String(yr);
 }
 
 // ══ 3. 順位表（ホーム） ══
+let standingsView = 'detail'; // 'detail' | 'form'
+function switchStandingsView(view){
+  standingsView = view;
+  document.getElementById('stview-tab-detail').classList.toggle('active', view==='detail');
+  document.getElementById('stview-tab-form').classList.toggle('active', view==='form');
+  loadStandings();
+}
+
+// 指定チームの直近N試合の結果を、新しい順ではなく「古い→新しい」の順で返す
+function getRecentForm(yr, div, team, n=5){
+  const d = getDivData(yr, div);
+  if(!d || !d.matches) return [];
+  const played = d.matches
+    .filter(m=>m.played && (m.home===team || m.away===team))
+    .sort((a,b)=>(a.playedAt||0)-(b.playedAt||0) || a.leg-b.leg || a.round-b.round || a.id-b.id);
+  return played.slice(-n).map(m=>{
+    const isHome = m.home===team;
+    const my = isHome ? m.home_score : m.away_score;
+    const opp = isHome ? m.away_score : m.home_score;
+    return {
+      result: my>opp ? 'W' : my<opp ? 'L' : 'D',
+      isHome, my, opp,
+      opponent: isHome ? m.away : m.home,
+      cround: getContinuousRound(d.matches, m.leg, m.round),
+    };
+  });
+}
+
 function loadStandings(){
   const yr = document.getElementById('home-yr').value;
   const div = curDiv.home;
@@ -583,21 +628,53 @@ function loadStandings(){
 
   let html=`<div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${total?done/total*100:0}%;background:${color}"></div></div><div class="prog-txt">${done}/${total} 試合</div></div>`;
   if(!rows.length){ html+='<div class="loading">データなし</div>'; document.getElementById('standings-area').innerHTML=html; return; }
-  html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
-  rows.forEach((r,i)=>{
+
+  const rowMeta = (i) => {
     const isP = div!==1 && i<pN;
     const isPO = div!==1 && poEnabled && i>=pN && i<pN+poN;
     const isR = div!==3 && n-i<=rN;
-    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
-    const gd = r.gd>0?'+'+r.gd:r.gd;
-    const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
-    const badge = isP?'<span style="font-size:9px;color:var(--g)">↑</span>'
-      : isPO?'<span style="font-size:9px;color:var(--gold)">PO</span>'
-      : isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'';
-    const rowClass = isP?'row-p':isPO?'row-po':isR?'row-r':'';
-    html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td><span class="pts">${r.pts}</span></td></tr>`;
-  });
-  html+=`</tbody></table></div></div>`;
+    return {
+      rowClass: isP?'row-p':isPO?'row-po':isR?'row-r':'',
+      badge: isP?'<span style="font-size:9px;color:var(--g)">↑</span>'
+        : isPO?'<span style="font-size:9px;color:var(--gold)">PO</span>'
+        : isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'',
+      rc: i===0?'r1':i===1?'r2':i===2?'r3':'',
+    };
+  };
+
+  if(standingsView==='form'){
+    // ── 直近5試合表示モード ──
+    html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>勝点</th><th>直近5試合（古→新）</th></tr></thead><tbody>`;
+    rows.forEach((r,i)=>{
+      const {rowClass, badge, rc} = rowMeta(i);
+      const form = getRecentForm(yr, div, r.team, 5);
+      const formHtml = form.length
+        ? form.map(f=>{
+            const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
+            const title = `第${f.cround}節 ${f.isHome?'H':'A'} vs ${f.opponent} ${f.my}-${f.opp}`;
+            return `<span class="form-dot" style="background:${bg};" title="${title}">${f.result}</span>`;
+          }).join('')
+        : '<span style="color:var(--muted);font-size:10px;">—</span>';
+      html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span></td>
+        <td class="tl">${r.team}${badge}</td>
+        <td><span class="pts">${r.pts}</span></td>
+        <td style="white-space:nowrap;">${formHtml}</td></tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+    html+=`<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+      ※ 左が古い試合、右が最新です。<span style="color:var(--g);font-weight:700;">W</span>=勝ち／<span style="color:var(--gold);font-weight:700;">D</span>=引き分け／<span style="color:var(--red);font-weight:700;">L</span>=負け。
+    </p>`;
+  } else {
+    // ── 詳細表示モード ──
+    html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
+    rows.forEach((r,i)=>{
+      const {rowClass, badge, rc} = rowMeta(i);
+      const gd = r.gd>0?'+'+r.gd:r.gd;
+      const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
+      html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td><span class="pts">${r.pts}</span></td></tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+  }
   document.getElementById('standings-area').innerHTML=html;
 }
 
@@ -1809,10 +1886,10 @@ function showTeamProfile(){
     });
   });
 
-  // 現在の所属・ELO
+  // 現在の所属・ELO（全チーム分のテーブルを組むと重いので、必要な1チーム分だけ取得する）
   const curInfo = getCurrentRankInfo(team);
-  const eloRows = getEloTableAll();
-  const eloRow = eloRows.find(r=>r.team===team);
+  const {elo} = calcAllElo();
+  const eloRow = elo[team]!==undefined ? { rating: Math.round(elo[team]) } : null;
 
   // 昇降格履歴
   const log = (db.promotionLog||[]).filter(e=>e.team===team).sort((a,b)=>parseInt(b.toYear)-parseInt(a.toYear));
@@ -2157,6 +2234,144 @@ function drawIsChart(snaps,allTeams){
 }
 
 // ══ 10. 昇格プレーオフ（PO） ══
+// ══ 次節の勝敗予想 ══
+// ポアソン分布の確率質量関数（k点が入る確率）
+function poissonPmf(k, lambda){
+  if(lambda<=0) return k===0?1:0;
+  let logP = -lambda + k*Math.log(lambda);
+  for(let i=2;i<=k;i++) logP -= Math.log(i);
+  return Math.exp(logP);
+}
+
+// 2チームの期待得点から、勝ち/分け/負けの確率と最有力スコアを厳密に計算する
+function computeMatchProbabilities(lamH, lamA, maxGoals=8){
+  let pH=0, pD=0, pA=0;
+  const scoreProbs=[];
+  for(let h=0;h<=maxGoals;h++){
+    for(let a=0;a<=maxGoals;a++){
+      const p = poissonPmf(h,lamH)*poissonPmf(a,lamA);
+      if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p;
+      scoreProbs.push({h,a,p});
+    }
+  }
+  scoreProbs.sort((x,y)=>y.p-x.p);
+  return {pH, pD, pA, topScores:scoreProbs.slice(0,3)};
+}
+
+function renderNextRoundForecast(){
+  const yr = latestSeason();
+  const div = curDiv.matches;
+  const el = document.getElementById('forecast-area');
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+
+  const d = getDivData(yr, div);
+  if(!d || !d.matches || !d.matches.length){ el.innerHTML='<div class="loading">試合がありません</div>'; return; }
+
+  // 「次節」＝まだ結果が入っていない試合のうち、最も早い節
+  const pending = d.matches.filter(m=>!m.played);
+  if(!pending.length){ el.innerHTML='<div class="loading">全試合が終了しています</div>'; return; }
+  const nextKey = pending
+    .map(m=>({leg:m.leg, round:m.round, cr:getContinuousRound(d.matches, m.leg, m.round)}))
+    .sort((a,b)=>a.cr-b.cr)[0];
+  const nextMatches = pending.filter(m=>m.leg===nextKey.leg && m.round===nextKey.round);
+
+  el.innerHTML = `<div class="loading loading-active">🔮 次節の予想を計算中…</div>`;
+
+  setTimeout(()=>{
+    // 予測モデルと同じ期待得点の組み立て方を使う
+    const {elo} = calcAllElo();
+    const teams = d.teams;
+    const ad = {};
+    teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
+    const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway();
+    const adHA = {};
+    teams.forEach(t=>{ adHA[t] = getHomeAwayAttackDefense(yr, div, t, ad[t], avgHome, avgAway); });
+    const teamHA = computeTeamHomeAdvantages(elo);
+    const leagueHA = teamHA._leagueDefault;
+    const haMultiplier = t => {
+      const diff = (teamHA[t]!==undefined ? teamHA[t] : leagueHA) - leagueHA;
+      return Math.max(0.75, Math.min(1.30, 1 + diff/100 * 0.15));
+    };
+
+    const standings = calcStandings(yr, div);
+    const rankOf = {};
+    standings.forEach(r=>{ rankOf[r.team]=r.rank; });
+
+    let html = `<div class="slbl">🔮 第${nextKey.cr}節 勝敗予想</div>`;
+
+    nextMatches.forEach(m=>{
+      const h=m.home, a=m.away;
+      if(!adHA[h] || !adHA[a]) return;
+
+      let lamH = avgHome * adHA[h].homeAttack * adHA[a].awayDefense;
+      let lamA = avgAway * adHA[a].awayAttack * adHA[h].homeDefense;
+      const hMult = haMultiplier(h);
+      lamH *= hMult;
+      lamA /= Math.max(0.85, hMult);
+
+      const h2h = getH2HStats(h, a);
+      if(h2h && h2h.total>=2){
+        const blend = Math.min(0.25, h2h.total*0.03);
+        lamH = lamH*(1-blend) + h2h.aAvgGoals*blend;
+        lamA = lamA*(1-blend) + h2h.bAvgGoals*blend;
+      }
+      lamH = Math.max(0.15, Math.min(5.0, lamH));
+      lamA = Math.max(0.15, Math.min(5.0, lamA));
+
+      const {pH, pD, pA, topScores} = computeMatchProbabilities(lamH, lamA);
+      const pHp = Math.round(pH*100), pDp = Math.round(pD*100), pAp = Math.round(pA*100);
+
+      // 直近フォーム
+      const formH = getRecentForm(yr, div, h, 5);
+      const formA = getRecentForm(yr, div, a, 5);
+      const formHtml = form => form.length
+        ? form.map(f=>{
+            const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
+            return `<span class="form-dot" style="background:${bg};width:13px;height:13px;font-size:8px;margin-right:2px;">${f.result}</span>`;
+          }).join('')
+        : '<span style="color:var(--muted);font-size:9px;">—</span>';
+
+      html += `<div class="card"><div class="card-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="flex:1;text-align:right;">
+            <div style="font-size:13px;font-weight:700;">${h}</div>
+            <div style="font-size:9px;color:var(--muted);">${rankOf[h]?rankOf[h]+'位':''} ・ ホーム</div>
+            <div style="margin-top:3px;">${formHtml(formH)}</div>
+          </div>
+          <div style="flex:0 0 auto;font-size:11px;color:var(--muted);font-weight:700;">vs</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;">${a}</div>
+            <div style="font-size:9px;color:var(--muted);">${rankOf[a]?rankOf[a]+'位':''} ・ アウェイ</div>
+            <div style="margin-top:3px;">${formHtml(formA)}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;font-size:10px;font-weight:700;color:#fff;">
+          <div style="width:${pHp}%;background:var(--g);display:flex;align-items:center;justify-content:center;">${pHp>=12?pHp+'%':''}</div>
+          <div style="width:${pDp}%;background:var(--gold);display:flex;align-items:center;justify-content:center;">${pDp>=12?pDp+'%':''}</div>
+          <div style="width:${pAp}%;background:var(--red);display:flex;align-items:center;justify-content:center;">${pAp>=12?pAp+'%':''}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:3px;">
+          <span>ホーム勝ち ${pHp}%</span><span>引き分け ${pDp}%</span><span>アウェイ勝ち ${pAp}%</span>
+        </div>
+
+        <div style="margin-top:8px;font-size:10px;color:var(--muted);">
+          予想スコア：${topScores.map(s=>`<strong style="color:var(--text);">${s.h}-${s.a}</strong>(${Math.round(s.p*100)}%)`).join(' ／ ')}
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">
+          期待得点：${lamH.toFixed(2)} - ${lamA.toFixed(2)}
+        </div>
+      </div></div>`;
+    });
+
+    html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+      ※ ELO・ホーム/アウェイ別の攻守力・チーム固有のホームアドバンテージ・直接対決成績をもとに、ポアソン分布で算出した確率です。
+    </p>`;
+
+    el.innerHTML = html;
+  }, 30);
+}
+
 function renderPlayoff(){
   const yr=latestSeason();
   const div=curDiv.po;
