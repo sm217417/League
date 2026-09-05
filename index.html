@@ -3145,7 +3145,6 @@ const HA_SHRINK_GAMES = 10; // この試合数までは、リーグ標準値に�
 const HA_MIN = -20, HA_MAX = 130;
 
 // ホームアドバンテージ・レーティングもELOと同様にキャッシュする
-let _haCache = null, _haCacheSeq = null, _haCacheSig = null;
 function computeTeamHomeAdvantages(precomputedElo){
   const sig = eloDataSignature();
   if(_haCache && _haCacheSeq===db._seq && _haCacheSig===sig) return _haCache;
@@ -3200,6 +3199,8 @@ function computeTeamHomeAdvantagesUncached(precomputedElo){
 // 全試合を毎回走査するのは重いため、データが変わるまで結果を使い回す。
 // db._seq（試合を保存するたびに増える連番）をデータ変更の目印として使う。
 let _eloCache = null, _eloCacheSeq = null, _eloCacheSig = null;
+let _haCache = null, _haCacheSeq = null, _haCacheSig = null;
+let _h2hIndex = null, _h2hSeq = null, _h2hSig = null;
 
 // シーズン・カップの構成変更（削除や新規作成など）も検知するための簡易シグネチャ
 function eloDataSignature(){
@@ -3221,6 +3222,7 @@ function calcAllElo(){
 function invalidateEloCache(){
   _eloCache = null; _eloCacheSeq = null; _eloCacheSig = null;
   _haCache = null; _haCacheSeq = null; _haCacheSig = null;
+  _h2hIndex = null; _h2hSeq = null; _h2hSig = null;
 }
 
 // 全試合（リーグ戦＋カップ戦）を「実際に保存した順（playedAt）」で並べてELOを再計算。
@@ -3405,24 +3407,53 @@ function getTeamTendency(yr, div, team){
 }
 
 // 2チームの全シーズン通算・直接対決成績（得点も含む）
-function getH2HStats(teamA, teamB){
-  let aWin=0, bWin=0, draw=0, aGoals=0, bGoals=0;
+// ══ 直接対決インデックス ══
+// 予測では残り試合ごとにH2Hを引くため、都度全試合を走査すると膨大な回数になる。
+// 全試合を1度だけ走査して全ペア分を集計しておき、以降は参照するだけにする。
+function h2hPairKey(a, b){ return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`; }
+
+function buildH2HIndex(){
+  const idx = {};
   Object.values(db.seasons).forEach(season=>{
     Object.values(season.divisions||{}).forEach(d=>{
       (d.matches||[]).forEach(m=>{
         if(!m.played) return;
-        if(!((m.home===teamA&&m.away===teamB)||(m.home===teamB&&m.away===teamA))) return;
-        const aIsHome = m.home===teamA;
-        const ag = aIsHome?m.home_score:m.away_score;
-        const bg = aIsHome?m.away_score:m.home_score;
-        aGoals+=ag; bGoals+=bg;
-        if(ag>bg) aWin++; else if(ag<bg) bWin++; else draw++;
+        const k = h2hPairKey(m.home, m.away);
+        let e = idx[k];
+        if(!e) e = idx[k] = {total:0, firstWin:0, secondWin:0, draw:0, firstGoals:0, secondGoals:0};
+        // 辞書順で先に来るチームを「first」として集計する（呼び出し時に視点を入れ替える）
+        const first = m.home < m.away ? m.home : m.away;
+        const homeIsFirst = (m.home === first);
+        const fg = homeIsFirst ? m.home_score : m.away_score;
+        const sg = homeIsFirst ? m.away_score : m.home_score;
+        e.total++; e.firstGoals += fg; e.secondGoals += sg;
+        if(fg > sg) e.firstWin++; else if(fg < sg) e.secondWin++; else e.draw++;
       });
     });
   });
-  const total = aWin+bWin+draw;
-  if(total < 2) return null; // サンプル不足は無視
-  return {aWinRate:aWin/total, bWinRate:bWin/total, drawRate:draw/total, total,
+  return idx;
+}
+
+function getH2HIndex(){
+  const sig = eloDataSignature();
+  if(_h2hIndex && _h2hSeq===db._seq && _h2hSig===sig) return _h2hIndex;
+  _h2hIndex = buildH2HIndex();
+  _h2hSeq = db._seq; _h2hSig = sig;
+  return _h2hIndex;
+}
+
+function getH2HStats(teamA, teamB){
+  const e = getH2HIndex()[h2hPairKey(teamA, teamB)];
+  if(!e || e.total < 2) return null; // サンプル不足は無視
+
+  // インデックスは辞書順で集計しているため、teamAが「second」側なら視点を入れ替える
+  const aIsFirst = teamA < teamB;
+  const aWin = aIsFirst ? e.firstWin : e.secondWin;
+  const bWin = aIsFirst ? e.secondWin : e.firstWin;
+  const aGoals = aIsFirst ? e.firstGoals : e.secondGoals;
+  const bGoals = aIsFirst ? e.secondGoals : e.firstGoals;
+  const total = e.total;
+  return {aWinRate:aWin/total, bWinRate:bWin/total, drawRate:e.draw/total, total,
     aAvgGoals: aGoals/total, bAvgGoals: bGoals/total};
 }
 
@@ -3605,6 +3636,10 @@ function predictStandings(yr, div, simulations=20000){
   const NEUTRAL = 1.3; // 平均的な1試合あたり勝点の目安（3勝1分の中間的水準）
   const K_FORM = 0.15;  // 直近フォームによる期待得点の補正係数
 
+  // 直近フォームはチーム単位で決まるので、試合ごとに再計算せず先に一度だけ求めておく
+  const tendency = {};
+  teams.forEach(t=>{ tendency[t] = getTeamTendency(yr, div, t); });
+
   // ── 各残り試合の「期待得点（ホーム/アウェイ）」を事前計算 ──
   const matchLambdas = remainingMatches.map(m=>{
     const h=m.home, a=m.away;
@@ -3620,7 +3655,7 @@ function predictStandings(yr, div, simulations=20000){
     lamA /= Math.max(0.85, hMult); // ホームが強い相手のアウェイ得点は抑えられる（過剰にならないよう下限を設定）
 
     // 直近フォームを軽く反映（勝点ペースが良ければ得点期待値を少し上げる）
-    const tH = getTeamTendency(yr, div, h), tA = getTeamTendency(yr, div, a);
+    const tH = tendency[h], tA = tendency[a];
     if(tH.recentAvg!=null) lamH *= (1 + (tH.recentAvg-NEUTRAL)*K_FORM/3);
     if(tA.recentAvg!=null) lamA *= (1 + (tA.recentAvg-NEUTRAL)*K_FORM/3);
 
@@ -3918,4 +3953,5 @@ function buildEloTableHtml(){
 init();
 </script>
 </body>
+</html>
 </html>
