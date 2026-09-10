@@ -103,8 +103,6 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .row-r{background:var(--red2);}
 .pts{font-size:15px;font-weight:700;color:var(--g);}
 .rn{font-weight:700;font-size:14px;}
-.team-link{cursor:pointer;}
-.team-link:active{opacity:.6;}
 .r1{color:var(--gold)}.r2{color:#90a4ae}.r3{color:#ff8a65}
 /* プログレス */
 .prog{padding:6px 13px;}
@@ -130,7 +128,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .h2h-val{font-size:27px;font-weight:700;line-height:1;}
 .h2h-lbl{font-size:11px;color:var(--muted);margin-top:3px;}
 /* チームフィルター */
-.tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:10px 13px;}
+.tfilter{display:flex;flex-wrap:wrap;gap:6px;padding:10px 13px;max-height:150px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .tchip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;transition:transform .1s,background .15s,color .15s;}
 .tchip:active{transform:scale(.94);}
 .tchip.on{color:#fff;border-color:transparent;}
@@ -155,8 +153,6 @@ canvas{display:block;max-width:100%;}
 .po-match{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0;}
 .cup-seed-badge{display:inline-block;font-size:9px;font-weight:700;background:var(--gold2);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;}
 .cup-div-badge{display:inline-block;font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;}
-.cup-round-collapse{display:none;}
-.cup-round-collapse.open{display:block;}
 .po-team{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;}
 .po-team:last-child{border-bottom:none;}
 .po-team.winner{background:var(--g2);color:var(--g);}
@@ -451,7 +447,7 @@ function migrateCupsToSlots(d){
   });
 }
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, elo:{}, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{} }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{} }; }
 
 // 既存データに「保存順（playedAt）」を後付けで割り振る一回限りのマイグレーション。
 // これまでの計算順（年度昇順→部門1→2→3→その年のカップ戦）をそのまま踏襲した連番を付与し、
@@ -1796,17 +1792,10 @@ function showRatingSnapshot(){
   const snap = db.ratingSnapshots?.[yr];
   if(!snap){ contentEl.innerHTML = '<div class="loading">データなし</div>'; return; }
 
-  // 現在のレーティングと比較して、開幕からどれだけ変動したかを表示する
-  const currentElo = calcAllElo().elo;
-  const currentHA = computeTeamHomeAdvantages(currentElo);
-
+  // このページは「その年の開幕時点の記録」を見るためのもの。
+  // 現在のレーティングは予測タブの「📈ELO」で確認できるため、ここでは当時の値のみを表示する。
   const rows = Object.entries(snap.elo)
-    .map(([team, rating])=>({
-      team, rating,
-      curRating: currentElo[team]!==undefined ? Math.round(currentElo[team]) : null,
-      ha: snap.homeAdv?.[team] ?? null,
-      curHa: currentHA[team]!==undefined ? Math.round(currentHA[team]) : null,
-    }))
+    .map(([team, rating])=>({ team, rating, ha: snap.homeAdv?.[team] ?? null }))
     .sort((a,b)=>b.rating-a.rating);
 
   const savedDate = snap.savedAt ? new Date(snap.savedAt).toLocaleDateString('ja-JP') : '—';
@@ -1816,21 +1805,17 @@ function showRatingSnapshot(){
     リーグ標準ホームアドバンテージ: ${snap.leagueHomeAdv ?? '—'}pt
   </p>`;
   html += `<div class="slbl">📸 ${yr}年目 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
-  html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>開幕ELO</th><th>現在</th><th>増減</th><th>HA</th></tr></thead><tbody>`;
+  html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>開幕時ELO</th><th>HA</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
-    const delta = r.curRating!==null ? r.curRating - r.rating : null;
-    const dColor = delta>0?'color:var(--g)':delta<0?'color:var(--red)':'color:var(--muted)';
-    const dText = delta===null ? '—' : (delta>0?'+':'')+delta;
     html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
       <td style="font-weight:700;">${r.rating}</td>
-      <td>${r.curRating ?? '—'}</td>
-      <td style="${dColor};font-size:11px;">${dText}</td>
       <td style="font-size:11px;color:var(--muted);">${r.ha ?? '—'}</td></tr>`;
   });
   html += `</tbody></table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-    ※ HA＝そのチーム固有のホームアドバンテージ（リーグ標準より大きいほどホームで強い）。
+    ※ HA＝そのチーム固有のホームアドバンテージ（リーグ標準より大きいほどホームで強い）。<br>
+    ※ 現在のレーティングは「🔮 ELO予測」タブの「📈 ELO」でご確認いただけます。
   </p>`;
 
   contentEl.innerHTML = html;
@@ -1855,8 +1840,9 @@ function showTeamProfile(){
   const contentEl = document.getElementById('profile-content');
   if(!team || !contentEl) return;
 
-  // 通算成績（全リーグ戦）
-  let p=0,w=0,d=0,l=0,gf=0,ga=0;
+  // 通算成績（全体＋部門別に集計）
+  const blank = () => ({p:0,w:0,d:0,l:0,gf:0,ga:0});
+  const stats = { all: blank(), 1: blank(), 2: blank(), 3: blank() };
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
       const dd = getDivData(yr, div);
@@ -1865,20 +1851,24 @@ function showTeamProfile(){
         const isHome = m.home===team;
         const my = isHome?m.home_score:m.away_score;
         const opp = isHome?m.away_score:m.home_score;
-        p++; gf+=my; ga+=opp;
-        if(my>opp) w++; else if(my<opp) l++; else d++;
+        [stats.all, stats[div]].forEach(s=>{
+          s.p++; s.gf+=my; s.ga+=opp;
+          if(my>opp) s.w++; else if(my<opp) s.l++; else s.d++;
+        });
       });
     });
   });
+  const {p,w,d,l,gf,ga} = stats.all;
 
-  // タイトル数
+  // タイトル数（全体＋部門別）
   let leagueTitles=0, cupTitles=0, poTitles=0;
+  const titlesByDiv = {1:{league:0,po:0}, 2:{league:0,po:0}, 3:{league:0,po:0}};
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
       const rows = getStandings(yr, div);
-      if(rows[0]?.team===team) leagueTitles++;
+      if(rows[0]?.team===team){ leagueTitles++; titlesByDiv[div].league++; }
       const dd = getDivData(yr, div);
-      if(dd?.playoff?.winner===team) poTitles++;
+      if(dd?.playoff?.winner===team){ poTitles++; titlesByDiv[div].po++; }
     });
     [1,2].forEach(slot=>{
       const cup = getCup(yr, slot);
@@ -1916,12 +1906,43 @@ function showTeamProfile(){
     <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px;">通算得点 ${gf} ／ 通算失点 ${ga}（得失点差 ${gf-ga>0?'+':''}${gf-ga}）</div>
   </div></div>`;
 
+  // 部門別の内訳（その部門で1試合でもプレーした場合のみ行を出す）
+  const playedDivs = [1,2,3].filter(dv=>stats[dv].p>0);
+  if(playedDivs.length){
+    html += `<div class="slbl">📋 部門別の通算成績</div><div class="card"><div class="tbl-scroll">`;
+    html += `<table class="stbl"><thead><tr><th class="tl">部門</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝率</th></tr></thead><tbody>`;
+    playedDivs.forEach(dv=>{
+      const s = stats[dv];
+      const diff = s.gf-s.ga;
+      const winRate = s.p ? Math.round(s.w/s.p*100) : 0;
+      html += `<tr>
+        <td class="tl" style="color:${divColor(dv)};font-weight:700;">${getDivName(dv)}</td>
+        <td>${s.p}</td>
+        <td style="color:var(--g);">${s.w}</td>
+        <td style="color:var(--gold);">${s.d}</td>
+        <td style="color:var(--red);">${s.l}</td>
+        <td>${s.gf}</td><td>${s.ga}</td>
+        <td style="${diff>0?'color:var(--g)':diff<0?'color:var(--red)':''}">${diff>0?'+':''}${diff}</td>
+        <td style="font-weight:700;">${winRate}%</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+  }
+
   html += `<div class="slbl">🎖️ タイトル内訳</div><div class="card"><div class="card-body">
     <div style="display:flex;justify-content:space-around;text-align:center;">
       <div><div style="font-size:18px;font-weight:700;">${leagueTitles}</div><div style="font-size:10px;color:var(--muted);">🏆リーグ</div></div>
       <div><div style="font-size:18px;font-weight:700;">${cupTitles}</div><div style="font-size:10px;color:var(--muted);">🏅カップ</div></div>
       <div><div style="font-size:18px;font-weight:700;">${poTitles}</div><div style="font-size:10px;color:var(--muted);">⬆️PO</div></div>
     </div>
+    ${playedDivs.some(dv=>titlesByDiv[dv].league||titlesByDiv[dv].po) ? `
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--muted);">
+      ${playedDivs.filter(dv=>titlesByDiv[dv].league||titlesByDiv[dv].po).map(dv=>
+        `<div style="display:flex;justify-content:space-between;padding:2px 0;">
+          <span style="color:${divColor(dv)};font-weight:700;">${getDivName(dv)}</span>
+          <span>${titlesByDiv[dv].league?`🏆${titlesByDiv[dv].league}`:''} ${titlesByDiv[dv].po?`⬆️${titlesByDiv[dv].po}`:''}</span>
+        </div>`).join('')}
+    </div>` : ''}
   </div></div>`;
 
   if(log.length){
@@ -1966,15 +1987,66 @@ function renderHistTrend(){
   const allTeams = Object.keys(teamCombined);
   if(!trendSel.size)trendSel=new Set(allTeams.slice(0,8));
 
-  html+=`<div class="tfilter">`;
+  // チーム数が多いと目的のチームを探しにくいため、検索と一括操作を用意する
+  html+=`<div class="slbl" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>チームを選択</span>
+    <span id="trend-selcount" style="font-weight:400;">${trendSel.size} / ${allTeams.length} 選択中</span>
+  </div>`;
+  html+=`<div style="padding:0 12px 6px;">
+    <input type="text" id="trend-search" placeholder="🔍 チーム名で絞り込み"
+      oninput="filterTrendChips(this.value)" style="font-size:12px;padding:7px 10px;">
+  </div>`;
+  html+=`<div class="tabs" style="padding:0 12px 6px;">
+    <div class="tab" onclick="setTrendSelection('all')">全選択</div>
+    <div class="tab" onclick="setTrendSelection('none')">全解除</div>
+    <div class="tab" onclick="setTrendSelection('top8')">上位8チーム</div>
+    <div class="tab" onclick="setTrendSelection('invert')">選択反転</div>
+  </div>`;
+
+  html+=`<div class="tfilter" id="trend-chips">`;
   allTeams.forEach((t,i)=>{
     const c=PAL[i%PAL.length],on=trendSel.has(t);
-    html+=`<button class="tchip ${on?'on':''}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
+    html+=`<button class="tchip ${on?'on':''}" data-team="${t}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
       onclick="toggleTrend('${t.replace(/'/g,"\\'")}',this,'${c}')">${t}</button>`;
   });
   html+=`</div><div class="card chart-wrap"><canvas id="trend-cv" height="${Math.min(420, 140+bands.reduce((s,b)=>s+b.size,0)*8)}"></canvas></div>`;
   document.getElementById('history-area').innerHTML=html;
   setTimeout(()=>drawTrend(usedSeasons, teamCombined, bands),50);
+}
+
+// 検索ボックスの入力に応じてチップを絞り込む（再描画せずCSSで隠すだけなので軽い）
+function filterTrendChips(q){
+  const query = (q||'').trim().toLowerCase();
+  document.querySelectorAll('#trend-chips .tchip').forEach(chip=>{
+    const name = (chip.dataset.team||'').toLowerCase();
+    chip.style.display = (!query || name.includes(query)) ? '' : 'none';
+  });
+}
+
+// チーム選択の一括操作
+function setTrendSelection(mode){
+  const allSeasons = getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
+  const bands = buildTrendBands(allSeasons);
+  const {teamCombined} = buildTrendCombinedRanks(allSeasons, bands);
+  const allTeams = Object.keys(teamCombined);
+
+  if(mode==='all') trendSel = new Set(allTeams);
+  else if(mode==='none') trendSel = new Set();
+  else if(mode==='top8'){
+    // 直近シーズンの順位が良い順に8チーム
+    const latest = allSeasons[allSeasons.length-1];
+    const ranked = allTeams
+      .map(t=>({team:t, rank: teamCombined[t]?.[latest] ?? 999}))
+      .sort((a,b)=>a.rank-b.rank)
+      .slice(0,8).map(r=>r.team);
+    trendSel = new Set(ranked);
+  }
+  else if(mode==='invert'){
+    const inverted = new Set();
+    allTeams.forEach(t=>{ if(!trendSel.has(t)) inverted.add(t); });
+    trendSel = inverted;
+  }
+  renderHistTrend();
 }
 
 // 部門ごとのバンド（サイズ・オフセット）を作る。選択中の部門のみ。1部→2部→3部の順に積む。
@@ -2029,6 +2101,11 @@ function toggleTrend(t,el,c){
   const allSeasons=getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b));
   const bands = buildTrendBands(allSeasons);
   const {teamCombined, usedSeasons} = buildTrendCombinedRanks(allSeasons, bands);
+
+  // 選択数の表示を更新（グラフ全体を組み直さずに済ませる）
+  const counter = document.getElementById('trend-selcount');
+  if(counter) counter.textContent = `${trendSel.size} / ${Object.keys(teamCombined).length} 選択中`;
+
   drawTrend(usedSeasons, teamCombined, bands);
 }
 
@@ -2183,15 +2260,57 @@ function reloadInseason(){
   if(!played.length){document.getElementById('is-content').innerHTML='<div class="loading">試合結果がありません</div>';return;}
   if(!isSel.size)isSel=new Set(allTeams);
 
-  let html=`<div class="tfilter">`;
+  let html=`<div class="slbl" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>チームを選択</span>
+    <span id="is-selcount" style="font-weight:400;">${isSel.size} / ${allTeams.length} 選択中</span>
+  </div>`;
+  html+=`<div style="padding:0 12px 6px;">
+    <input type="text" id="is-search" placeholder="🔍 チーム名で絞り込み"
+      oninput="filterIsChips(this.value)" style="font-size:12px;padding:7px 10px;">
+  </div>`;
+  html+=`<div class="tabs" style="padding:0 12px 6px;">
+    <div class="tab" onclick="setIsSelection('all')">全選択</div>
+    <div class="tab" onclick="setIsSelection('none')">全解除</div>
+    <div class="tab" onclick="setIsSelection('top8')">上位8チーム</div>
+    <div class="tab" onclick="setIsSelection('invert')">選択反転</div>
+  </div>`;
+
+  html+=`<div class="tfilter" id="is-chips">`;
   allTeams.forEach((t,i)=>{
     const c=PAL[i%PAL.length],on=isSel.has(t);
-    html+=`<button class="tchip ${on?'on':''}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
+    html+=`<button class="tchip ${on?'on':''}" data-team="${t}" style="${on?`background:${c};`:`color:${c};border-color:${c};`}"
       onclick="toggleIs('${t.replace(/'/g,"\\'")}',this,'${c}')">${t}</button>`;
   });
   html+=`</div><div class="card chart-wrap"><canvas id="is-cv" height="220"></canvas></div>`;
   document.getElementById('is-content').innerHTML=html;
   setTimeout(()=>drawIsChart(snaps,allTeams),50);
+}
+
+function filterIsChips(q){
+  const query = (q||'').trim().toLowerCase();
+  document.querySelectorAll('#is-chips .tchip').forEach(chip=>{
+    const name = (chip.dataset.team||'').toLowerCase();
+    chip.style.display = (!query || name.includes(query)) ? '' : 'none';
+  });
+}
+
+function setIsSelection(mode){
+  const yr=document.getElementById('is-yr')?.value||getSeasons()[0];
+  const div=parseInt(document.getElementById('is-div')?.value||1);
+  const {allTeams} = computeInseasonSnapshots(yr, div);
+
+  if(mode==='all') isSel = new Set(allTeams);
+  else if(mode==='none') isSel = new Set();
+  else if(mode==='top8'){
+    const ranked = calcStandings(yr, div).slice(0,8).map(r=>r.team);
+    isSel = new Set(ranked.length?ranked:allTeams.slice(0,8));
+  }
+  else if(mode==='invert'){
+    const inverted = new Set();
+    allTeams.forEach(t=>{ if(!isSel.has(t)) inverted.add(t); });
+    isSel = inverted;
+  }
+  reloadInseason();
 }
 
 function toggleIs(t,el,c){
@@ -2202,6 +2321,10 @@ function toggleIs(t,el,c){
   const yr=document.getElementById('is-yr')?.value;
   const div=parseInt(document.getElementById('is-div')?.value||1);
   const {snaps, allTeams} = computeInseasonSnapshots(yr, div);
+
+  const counter = document.getElementById('is-selcount');
+  if(counter) counter.textContent = `${isSel.size} / ${allTeams.length} 選択中`;
+
   drawIsChart(snaps,allTeams);
 }
 
@@ -3308,7 +3431,7 @@ function calcAllEloUncached(){
     }
   });
 
-  return {elo, history, dynamicHomeAdv, gamesPlayed};
+  return {elo, history};
 }
 
 // 全チームの現在順位を取得（最新シーズンでの所属部門・順位）
@@ -3353,7 +3476,6 @@ function getEloTableAll(){
       team:t, rating:Math.round(r), delta:Math.round(delta), games:hist.length,
       curDiv: curInfo?curInfo.div:null,
       curRank: curInfo?curInfo.rank:null,
-      curTotal: curInfo?curInfo.total:null,
     };
   });
   rows.sort((a,b)=>b.rating-a.rating);
