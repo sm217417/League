@@ -478,6 +478,9 @@ let allMatches = {};
 let histTab = 'alltime';
 const PAL = ["#00a854","#f5a623","#e53935","#1976d2","#8e24aa","#0097a7","#558b2f","#f57c00","#ad1457","#00838f","#4527a0","#2e7d32"];
 let trendSel = new Set(), isSel = new Set();
+// 「まだ一度も選んでいない初期状態」と「意図的に全解除した状態」を区別するためのフラグ。
+// これがないと、全解除した直後の再描画で既定値が入り直してしまう。
+let trendSelInit = false, isSelInit = false;
 let teDiv = 1;
 let leagueSubtab = 'matches'; // 'matches' | 'po'
 
@@ -1985,7 +1988,7 @@ function renderHistTrend(){
 
   const {teamCombined, usedSeasons} = buildTrendCombinedRanks(allSeasons, bands);
   const allTeams = Object.keys(teamCombined);
-  if(!trendSel.size)trendSel=new Set(allTeams.slice(0,8));
+  if(!trendSelInit){ trendSel = new Set(allTeams.slice(0,8)); trendSelInit = true; }
 
   // チーム数が多いと目的のチームを探しにくいため、検索と一括操作を用意する
   html+=`<div class="slbl" style="display:flex;justify-content:space-between;align-items:center;">
@@ -2046,6 +2049,7 @@ function setTrendSelection(mode){
     allTeams.forEach(t=>{ if(!trendSel.has(t)) inverted.add(t); });
     trendSel = inverted;
   }
+  trendSelInit = true; // 明示的に操作した結果なので、既定値で上書きしない
   renderHistTrend();
 }
 
@@ -2088,7 +2092,9 @@ function toggleTrendDiv(d){
   if(trendDivSel.has(d)) trendDivSel.delete(d);
   else trendDivSel.add(d);
   if(!trendDivSel.size) trendDivSel.add(d); // 最低1つは選択状態を維持
+  // 部門が変わると対象チームが入れ替わるので、既定の選択（上位8チーム）を入れ直す
   trendSel.clear();
+  trendSelInit = false;
   renderHistTrend();
 }
 
@@ -2258,7 +2264,7 @@ function reloadInseason(){
   const {snaps, allTeams, played} = computeInseasonSnapshots(yr, div);
 
   if(!played.length){document.getElementById('is-content').innerHTML='<div class="loading">試合結果がありません</div>';return;}
-  if(!isSel.size)isSel=new Set(allTeams);
+  if(!isSelInit){ isSel = new Set(allTeams); isSelInit = true; }
 
   let html=`<div class="slbl" style="display:flex;justify-content:space-between;align-items:center;">
     <span>チームを選択</span>
@@ -2310,6 +2316,7 @@ function setIsSelection(mode){
     allTeams.forEach(t=>{ if(!isSel.has(t)) inverted.add(t); });
     isSel = inverted;
   }
+  isSelInit = true; // 明示的に操作した結果なので、既定値で上書きしない
   reloadInseason();
 }
 
@@ -2406,7 +2413,7 @@ function renderNextRoundForecast(){
     const teams = d.teams;
     const ad = {};
     teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
-    const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway();
+    const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway(div);
     const adHA = {};
     teams.forEach(t=>{ adHA[t] = getHomeAwayAttackDefense(yr, div, t, ad[t], avgHome, avgAway); });
     const teamHA = computeTeamHomeAdvantages(elo);
@@ -3613,8 +3620,8 @@ function getAttackDefense(yr, div, team, elo){
     ga += isHome? m.away_score : m.home_score;
   });
   const avgGf = gf/games, avgGa = ga/games;
-  // リーグ平均得点（概ね1試合1.3〜1.5点想定）と比較した相対値
-  const LEAGUE_AVG_GOALS = getLeagueAvgGoals();
+  // その部門のリーグ平均得点と比較した相対値（部門ごとに得点環境が違うため、部門別の平均を使う）
+  const LEAGUE_AVG_GOALS = getLeagueAvgGoals(div);
   const rawAttack = LEAGUE_AVG_GOALS>0 ? avgGf/LEAGUE_AVG_GOALS : 1.0;
   const rawDefense = LEAGUE_AVG_GOALS>0 ? avgGa/LEAGUE_AVG_GOALS : 1.0;
 
@@ -3632,10 +3639,14 @@ function getAttackDefense(yr, div, team, elo){
 }
 
 // リーグ全体の平均得点（ホーム・アウェイ合算、1チーム1試合あたり）を算出
-function getLeagueAvgGoals(){
+// リーグ平均得点を返す。部門を指定すると、その部門だけの平均を返す。
+// 部門ごとに得点環境が異なるため（上位リーグほど得点が多い等）、
+// 攻撃力・守備力を「その部門の平均＝1.00」として算出するのに使う。
+function getLeagueAvgGoals(targetDiv){
   let totalGoals=0, totalTeamGames=0;
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
+      if(targetDiv && div!==targetDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -3644,15 +3655,18 @@ function getLeagueAvgGoals(){
       });
     });
   });
+  // その部門のデータが少なすぎる場合は、全部門の平均にフォールバックする
+  if(totalTeamGames < 20 && targetDiv) return getLeagueAvgGoals();
   return totalTeamGames>0 ? totalGoals/totalTeamGames : 1.35;
 }
 
 // リーグ全体の「ホームチームの平均得点」「アウェイチームの平均得点」を分けて算出する。
 // ホームアドバンテージが得点そのものにどう出ているかを、モデルの基準値として使う。
-function getLeagueAvgGoalsHomeAway(){
+function getLeagueAvgGoalsHomeAway(targetDiv){
   let homeGoals=0, awayGoals=0, games=0;
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
+      if(targetDiv && div!==targetDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -3660,6 +3674,8 @@ function getLeagueAvgGoalsHomeAway(){
       });
     });
   });
+  // その部門のデータが少なすぎる場合は、全部門の平均にフォールバックする
+  if(games < 10 && targetDiv) return getLeagueAvgGoalsHomeAway();
   if(games < 10) return { avgHome:1.45, avgAway:1.15 }; // データ不足時の一般的な目安
   return { avgHome: homeGoals/games, avgAway: awayGoals/games };
 }
@@ -3740,7 +3756,7 @@ function predictStandings(yr, div, simulations=20000){
   // ── 攻撃力・守備力を事前計算（ELO土台＋シーズン内実績で補正） ──
   const ad = {};
   teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
-  const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway();
+  const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway(div);
 
   // ── ホーム/アウェイ別の攻撃力・守備力を事前計算 ──
   const adHA = {};
@@ -3909,21 +3925,43 @@ function computeRankBounds(yr, div){
 }
 
 // 攻撃力・守備力ランキング（予測タブ「⚔️攻守力」サブタブ）
+let adFilterDiv = 0; // 0=全体, 1/2/3=部門別
+function switchAdDiv(div){
+  adFilterDiv = div;
+  renderAttackDefenseRanking();
+}
+
 function renderAttackDefenseRanking(){
   const el = document.getElementById('ad-area');
-  const rows = getAttackDefenseTableAll();
-  if(!rows.length){ el.innerHTML = '<div class="loading">データなし</div>'; return; }
+  const allRows = getAttackDefenseTableAll();
+  if(!allRows.length){ el.innerHTML = '<div class="loading">データなし</div>'; return; }
 
   const div_names_short = ['','1部','2部','3部'];
   const divColor = d => ['','var(--d1)','var(--d2)','var(--d3)'][d]||'var(--muted)';
 
+  const rows = adFilterDiv===0 ? allRows : allRows.filter(r=>r.curDiv===adFilterDiv);
   const byAttack = [...rows].sort((a,b)=>b.attack-a.attack);
   const byDefense = [...rows].sort((a,b)=>a.defense-b.defense); // 守備は数値が低いほど堅い
 
-  let html = `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
-    ポアソン予測モデルで使っている攻撃力・守備力の指標です。1.00がリーグ平均、大きいほど攻撃力が高く、
-    守備力は<strong>小さいほど堅い</strong>ことを表します。
+  let html = `<div class="tabs" style="padding:0 12px 8px;">
+    <div class="tab ${adFilterDiv===0?'active':''}" onclick="switchAdDiv(0)">全体</div>
+    <div class="tab ${adFilterDiv===1?'active':''}" onclick="switchAdDiv(1)" style="${adFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${adFilterDiv===2?'active':''}" onclick="switchAdDiv(2)" style="${adFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${adFilterDiv===3?'active':''}" onclick="switchAdDiv(3)" style="${adFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+  </div>`;
+
+  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
+    ポアソン予測モデルで使っている攻撃力・守備力の指標です。<strong>その部門の平均を1.00</strong>として算出しており、
+    大きいほど攻撃力が高く、守備力は<strong>小さいほど堅い</strong>ことを表します。<br>
+    ${adFilterDiv===0
+      ? '※ 部門ごとに基準が異なるため、「全体」表示では部門をまたいだ数値の比較はできません。部門を選ぶと同一基準で比較できます。'
+      : `※ ${getDivName(adFilterDiv)}内での相対的な強さを表しています。`}
   </p>`;
+
+  if(!rows.length){
+    html += `<div class="loading">該当するチームがありません</div>`;
+    el.innerHTML = html; return;
+  }
 
   html += `<div class="slbl">⚔️ 攻撃力ランキング</div><div class="card">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>攻撃力</th><th>所属</th></tr></thead><tbody>`;
