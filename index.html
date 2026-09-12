@@ -24,6 +24,8 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
   --shadow-md:0 2px 8px rgba(26,35,51,.08),0 1px 3px rgba(26,35,51,.05);
   /* 表彰台（1〜3位）の色味 */
   --podium1:#fff9e6;--podium2:#f4f6f8;--podium3:#fdf0e7;
+  --heatmap-text:#1a2333;
+  --zebra-a:#e4e4e4;--zebra-b:#f0f0f0;
 }
 /* ダークモード：OSの設定に追従。data-theme属性で手動上書きも可能 */
 @media (prefers-color-scheme: dark){
@@ -31,30 +33,34 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
     --g:#26c06b;--g2:#12351f;
     --red:#ef5350;--red2:#3a1c1b;
     --gold:#ffb74d;--gold2:#3a2f14;
-    --bg:#12161c;--white:#1b212a;
-    --surface:#1b212a;--surface-alt:#212832;
-    --text:#e6ebf2;
-    --border:#2d3540;--muted:#93a1b5;
-    --divider:#252c36;
+    --bg:#0f1729;--white:#1a2540;
+    --surface:#1a2540;--surface-alt:#22304f;
+    --text:#e8edf7;
+    --border:#33415f;--muted:#9aabc7;
+    --divider:#28354f;
     --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;
     --shadow-sm:0 1px 3px rgba(0,0,0,.35);
     --shadow-md:0 2px 8px rgba(0,0,0,.4);
-    --podium1:#33290d;--podium2:#262c35;--podium3:#33230f;
+    --podium1:#3a3116;--podium2:#2a3652;--podium3:#3a2a18;
+    --heatmap-text:#e8edf7;
+    --zebra-a:#27324a;--zebra-b:#1e2840;
   }
 }
 :root[data-theme="dark"]{
   --g:#26c06b;--g2:#12351f;
   --red:#ef5350;--red2:#3a1c1b;
   --gold:#ffb74d;--gold2:#3a2f14;
-  --bg:#12161c;--white:#1b212a;
-  --surface:#1b212a;--surface-alt:#212832;
-  --text:#e6ebf2;
-  --border:#2d3540;--muted:#93a1b5;
-  --divider:#252c36;
+  --bg:#0f1729;--white:#1a2540;
+  --surface:#1a2540;--surface-alt:#22304f;
+  --text:#e8edf7;
+  --border:#33415f;--muted:#9aabc7;
+  --divider:#28354f;
   --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;
   --shadow-sm:0 1px 3px rgba(0,0,0,.35);
   --shadow-md:0 2px 8px rgba(0,0,0,.4);
-  --podium1:#33290d;--podium2:#262c35;--podium3:#33230f;
+  --podium1:#3a3116;--podium2:#2a3652;--podium3:#3a2a18;
+  --heatmap-text:#e8edf7;
+  --zebra-a:#27324a;--zebra-b:#1e2840;
 }
 /* ボトムナビ */
 .bnav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--surface);border-top:1px solid var(--border);display:flex;height:58px;box-shadow:0 -2px 10px rgba(26,35,51,.06);}
@@ -73,6 +79,8 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
 .ptitle{font-size:17px;font-weight:700;}
 /* カード */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin:8px 12px;overflow:hidden;box-shadow:var(--shadow-sm);}
+/* 表を主体とするカードは、横幅を最大限使えるよう左右の余白を詰める */
+.card-wide{margin-left:6px;margin-right:6px;}
 .card-hdr{padding:11px 13px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface-alt);}
 .card-body{padding:12px 13px;}
 /* タブ */
@@ -114,12 +122,8 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .stbl tr.podium-2 td:first-child{box-shadow:inset 3px 0 0 #90a4ae;}
 .stbl tr.podium-3 td:first-child{box-shadow:inset 3px 0 0 #c98a5e;}
 .podium-icon{font-size:10px;margin-left:2px;}
-/* 勝点バー（首位を100%とした相対表示） */
-.pts-wrap{display:flex;align-items:center;gap:5px;justify-content:flex-end;}
-.pts-bar{flex:0 0 28px;height:4px;background:var(--divider);border-radius:2px;overflow:hidden;}
-.pts-bar-fill{height:100%;border-radius:2px;}
 /* 順位変動の矢印 */
-.rank-move{font-size:9px;font-weight:700;margin-left:3px;white-space:nowrap;}
+.rank-move{font-size:9px;font-weight:700;margin-left:2px;white-space:nowrap;}
 .rank-up{color:var(--g);}
 .rank-down{color:var(--red);}
 .rank-same{color:var(--muted);opacity:.5;}
@@ -127,8 +131,8 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 .div-accent{height:3px;width:100%;}
 .stbl th{padding:6px 3px;text-align:center;font-size:10px;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap;}
 .stbl th.tl,.stbl td.tl{text-align:left;}
-.stbl td{padding:6px 3px;text-align:center;border-bottom:1px solid var(--divider);}
-.stbl td.tl{font-weight:700;}
+.stbl td{padding:6px 3px;text-align:center;border-bottom:1px solid var(--divider);white-space:nowrap;}
+.stbl td.tl{font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;}
 .stbl tr:last-child td{border-bottom:none;}
 .stbl-compact{font-size:11px;}
 .stbl-compact th{padding:5px 2px;font-size:9px;}
@@ -151,7 +155,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.7;}
 }
 .heatmap-corner{position:sticky;left:0;top:0;z-index:3;background:var(--surface-alt)!important;}
 .heatmap-zero{
-  background:repeating-linear-gradient(45deg,#e4e4e4,#e4e4e4 2px,#f0f0f0 2px,#f0f0f0 4px);
+  background:repeating-linear-gradient(45deg,var(--zebra-a),var(--zebra-a) 2px,var(--zebra-b) 2px,var(--zebra-b) 4px);
 }
 .row-p{background:var(--g2);}
 .row-po{background:var(--gold2);}
@@ -726,7 +730,6 @@ function loadStandings(){
   if(!rows.length){ html+='<div class="loading">データなし</div>'; document.getElementById('standings-area').innerHTML=html; return; }
 
   const moves = getRankMovements(yr, div);
-  const maxPts = Math.max(...rows.map(r=>r.pts), 1); // 勝点バーの基準（首位）
 
   const rowMeta = (i) => {
     const isP = div!==1 && i<pN;
@@ -741,7 +744,7 @@ function loadStandings(){
         : isPO?'<span style="font-size:9px;color:var(--gold)">PO</span>'
         : isR?'<span style="font-size:9px;color:var(--red)">↓</span>':'',
       rc: i===0?'r1':i===1?'r2':i===2?'r3':'',
-      podiumIcon: i===0?'<span class="podium-icon">🏆</span>':i===1?'<span class="podium-icon">🥈</span>':i===2?'<span class="podium-icon">🥉</span>':'',
+      podiumIcon: i===0?'<span class="podium-icon">🏆</span>':i===1?'<span class="podium-icon">🥈</span>':'',
     };
   };
 
@@ -754,15 +757,11 @@ function loadStandings(){
     return `<span class="rank-move rank-same">－</span>`;
   };
 
-  // 勝点を数値＋バーで表す（首位との差が直感的に分かる）
-  const ptsHtml = (pts) => `<div class="pts-wrap">
-      <span class="pts">${pts}</span>
-      <div class="pts-bar"><div class="pts-bar-fill" style="width:${Math.max(0, pts/maxPts*100)}%;background:${color};"></div></div>
-    </div>`;
+  const ptsHtml = (pts) => `<span class="pts">${pts}</span>`;
 
   if(standingsView==='form'){
     // ── 直近5試合表示モード ──
-    html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>勝点</th><th>直近5試合（古→新）</th></tr></thead><tbody>`;
+    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>勝点</th><th>直近5試合（古→新）</th></tr></thead><tbody>`;
     rows.forEach((r,i)=>{
       const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
       const form = getRecentForm(yr, div, r.team, 5);
@@ -785,7 +784,7 @@ function loadStandings(){
     </p>`;
   } else {
     // ── 詳細表示モード ──
-    html+=`<div class="card"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
+    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
     rows.forEach((r,i)=>{
       const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
       const gd = r.gd>0?'+'+r.gd:r.gd;
@@ -4179,7 +4178,7 @@ function renderHeatmap(){
       } else {
         const alpha = Math.min(0.92, Math.max(0.10, p/45));
         const label = p>=10 ? Math.round(p) : p;
-        const textColor = alpha>0.55 ? '#fff' : '#1a2333';
+        const textColor = alpha>0.55 ? '#fff' : 'var(--heatmap-text)';
         html += `<td style="background:rgba(${baseColor},${alpha});color:${textColor};" title="${row.team}：${i+1}位 ${p}%">${label}</td>`;
       }
     }
