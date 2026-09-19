@@ -293,6 +293,23 @@ canvas{display:block;max-width:100%;}
         <div style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 新シーズン開始</div>
         <div class="field"><label>年度（何年目か）</label><input type="number" id="s-yr" placeholder="例: 1" min="1"></div>
         <div class="field">
+          <label>シーズン表示名（任意）</label>
+          <input type="text" id="s-label" placeholder="未入力なら「◯年目」／例: 26/27、百年構想リーグ">
+        </div>
+        <div class="row" style="margin-bottom:10px;">
+          <div class="field" style="margin:0;flex:1;">
+            <label>昇格枠</label>
+            <input type="number" id="s-promote" value="2" min="0" max="10">
+          </div>
+          <div class="field" style="margin:0;flex:1;">
+            <label>降格枠</label>
+            <input type="number" id="s-relegate" value="3" min="0" max="10">
+          </div>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin:-4px 0 10px;line-height:1.6;">
+          ※ 移行期の変則シーズンなど、昇降格を行わない場合は両方とも 0 にしてください。
+        </p>
+        <div class="field">
           <label>日程の作り方</label>
           <div class="tabs" style="padding:0;">
             <div class="tab active" id="sched-mode-auto" onclick="setScheduleMode('auto')">🎲 自動（総当たり）</div>
@@ -371,6 +388,17 @@ canvas{display:block;max-width:100%;}
       </p>
       <button class="btn btn-g btn-sm btn-full" onclick="exportMatchesCSV()">📥 試合結果をCSVで書き出す</button>
       <div id="csv-export-msg" style="font-size:12px;margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">🗂️ シーズンの表示名・並び順</div>
+    <div class="card-body">
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+        シーズンの表示名と並び順を変更できます。並び順は<strong>数値が大きいほど新しい</strong>シーズンとして扱われ、
+        各画面のシーズン選択の並びに反映されます。
+      </p>
+      <div id="season-meta-list"></div>
     </div>
   </div>
 
@@ -490,6 +518,7 @@ function load(){
   if(!d.config.cup_names) d.config.cup_names = {1:"天皇杯",2:"ルヴァンカップ"};
   if(!d.promotionLog) d.promotionLog = [];
   if(!d.ratingSnapshots) d.ratingSnapshots = {};
+  if(!d.seasonMeta) d.seasonMeta = {};
   if(d._seq === undefined){
     migrateAddPlayedAt(d);
   }
@@ -509,7 +538,7 @@ function migrateCupsToSlots(d){
   });
 }
 function save(db){ localStorage.setItem(KEY, JSON.stringify(db)); }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{} }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{}, seasonMeta:{} }; }
 
 // 既存データに「保存順（playedAt）」を後付けで割り振る一回限りのマイグレーション。
 // これまでの計算順（年度昇順→部門1→2→3→その年のカップ戦）をそのまま踏襲した連番を付与し、
@@ -556,6 +585,7 @@ function init(){
   renderTeamEditor();
   buildDivNameForm();
   buildCupNameForm();
+  buildSeasonMetaForm();
   buildH2HSelects();
   renderTeamEditor();
   loadStandings();
@@ -565,7 +595,7 @@ function init(){
 
 function refreshSeasonSelects(){
   const seasons = getSeasons();
-  const opts = seasons.map(y=>`<option value="${y}">${y}年目</option>`).join('');
+  const opts = seasons.map(y=>`<option value="${y}">${getSeasonLabel(y)}</option>`).join('');
   const empty = '<option value="">—</option>';
   ['home-yr','pr-yr','del-yr','cup-yr'].forEach(id=>{
     const el=document.getElementById(id);
@@ -621,7 +651,29 @@ function buildDivTabs(id, active, cb){
 }
 
 // ══ 2. データアクセス共通処理 ══
-function getSeasons(){ return Object.keys(db.seasons).sort((a,b)=>parseInt(b)-parseInt(a)); }
+// シーズンのメタ情報（表示名・並び順）。変則シーズン（「26/27」「百年構想リーグ」等）に対応するため、
+// キー自体は内部IDとして扱い、画面には表示名を出す。
+function getSeasonMeta(yr){
+  return db.seasonMeta?.[String(yr)] || {};
+}
+function getSeasonLabel(yr){
+  const m = getSeasonMeta(yr);
+  return m.label || `${yr}年目`;
+}
+function getSeasonOrder(yr){
+  const m = getSeasonMeta(yr);
+  // 並び順が未設定なら、数値として解釈できればその値、できなければ0を使う
+  return (m.order !== undefined) ? m.order : (parseInt(yr) || 0);
+}
+
+// 新しい順（並び順の値が大きいものが先頭）で返す
+function getSeasons(){
+  return Object.keys(db.seasons).sort((a,b)=>{
+    const oa = getSeasonOrder(a), ob = getSeasonOrder(b);
+    if(oa !== ob) return ob - oa;
+    return String(b).localeCompare(String(a), 'ja');
+  });
+}
 function getDivData(yr,div){ yr=String(yr); return db.seasons[yr]?.divisions?.[String(div)]; }
 function getDivName(div){ return db.config.div_names[div]||div+'部'; }
 
@@ -1076,9 +1128,14 @@ function computePromotionMoves(prevYr){
     const n = rows.length;
     if(!n) return;
 
-    if(div>1){
-      // 上位2チーム自動昇格
-      rows.slice(0, AUTO_PROMOTE_N).forEach(r=>{
+    // 昇降格枠は、その前年度シーズンに保存された設定を使う
+    // （変則シーズンで「昇降格なし(0枠)」と設定されていればここで何も起きない）
+    const promoteN = d.promoteN !== undefined ? d.promoteN : AUTO_PROMOTE_N;
+    const relegateN = d.relegateN !== undefined ? d.relegateN : AUTO_RELEGATE_N;
+
+    if(div>1 && promoteN>0){
+      // 上位チーム自動昇格
+      rows.slice(0, promoteN).forEach(r=>{
         moves.push({team:r.team, from:div, to:div-1, reason:'順位'});
       });
       // プレーオフ優勝チームも昇格
@@ -1089,9 +1146,9 @@ function computePromotionMoves(prevYr){
         }
       }
     }
-    if(div<3){
-      // 下位3チーム自動降格
-      rows.slice(Math.max(0, n-AUTO_RELEGATE_N)).forEach(r=>{
+    if(div<3 && relegateN>0){
+      // 下位チーム自動降格
+      rows.slice(Math.max(0, n-relegateN)).forEach(r=>{
         // 既に昇格対象になっている場合はスキップ（安全策）
         const alreadyPromoted = moves.some(m=>m.team===r.team && m.to===div-1);
         if(!alreadyPromoted){
@@ -1130,11 +1187,18 @@ function startNewSeason(){
   const yr = parseInt(document.getElementById('s-yr').value);
   const msg = document.getElementById('season-start-msg');
   if(!yr || yr<1){ msg.style.color='var(--red)'; msg.textContent='年度を入力してください'; return; }
-  if(db.seasons[String(yr)]){ msg.style.color='var(--red)'; msg.textContent=`「${yr}年目」は既に存在します`; return; }
+  if(db.seasons[String(yr)]){ msg.style.color='var(--red)'; msg.textContent=`「${getSeasonLabel(yr)}」は既に存在します`; return; }
+
+  // シーズン個別の設定（変則シーズン対応）
+  const seasonLabel = document.getElementById('s-label')?.value.trim() || '';
+  const promoteN = Math.max(0, parseInt(document.getElementById('s-promote')?.value) || 0);
+  const relegateN = Math.max(0, parseInt(document.getElementById('s-relegate')?.value) || 0);
+  const displayName = seasonLabel || `${yr}年目`;
 
   const prevYr = String(yr-1);
   let moves = [];
-  let confirmMsg = `「${yr}年目」を開始します（${scheduleMode==='auto'?'自動日程':'手動日程'}）。\n\n`;
+  let confirmMsg = `「${displayName}」を開始します（${scheduleMode==='auto'?'自動日程':'手動日程'}）。\n`;
+  confirmMsg += `昇格枠 ${promoteN} ／ 降格枠 ${relegateN}${(promoteN===0&&relegateN===0)?'（昇降格なし）':''}\n\n`;
 
   if(db.seasons[prevYr]){
     moves = computePromotionMoves(prevYr);
@@ -1182,24 +1246,50 @@ function startNewSeason(){
   // 各部門でシーズン開始
   // 自動モード：2チーム以上のみ開始（総当たり日程を自動生成）
   // 手動モード：チーム0でも空の状態で開始OK（後からリーグタブでチーム・試合を追加していく）
+  // 開幕前は全チームが勝点0で並ぶため、表示順に意味を持たせる。
+  // 前年度の最終順位が上だったチームほど上に来るように並べ替える。
+  //   ・同じ部門に残留したチーム … 前年度のその部門での順位順
+  //   ・降格してきたチーム       … 元いた上位部門の順位が高いほど上
+  //   ・昇格してきたチーム       … 元いた下位部門の順位が高いほど上
+  // 前年度に存在しなかった（新規参入）チームは最後に回す。
+  const orderTeamsByPrevSeason = (teamList, div)=>{
+    const prevInfo = {}; // team -> {div, rank}
+    if(db.seasons[prevYr]){
+      [1,2,3].forEach(pd=>{
+        const pdata = getDivData(prevYr, pd);
+        if(!pdata) return;
+        calcStandings(prevYr, pd).forEach(r=>{ prevInfo[r.team] = {div:pd, rank:r.rank}; });
+      });
+    }
+    return [...teamList].sort((a,b)=>{
+      const pa = prevInfo[a], pb = prevInfo[b];
+      if(!pa && !pb) return a.localeCompare(b, 'ja'); // どちらも新規なら名前順
+      if(!pa) return 1;   // 新規参入は後ろへ
+      if(!pb) return -1;
+      if(pa.div !== pb.div) return pa.div - pb.div;   // 上位部門にいた方が上
+      return pa.rank - pb.rank;                        // 同じ部門なら順位順
+    });
+  };
+
   const started = [];
   const skipped = [];
   [1,2,3].forEach(div=>{
-    const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
+    const rawTeams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
+    const teams = orderTeamsByPrevSeason(rawTeams, div);
     if(scheduleMode==='manual'){
       db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
       db.seasons[String(yr)].divisions[String(div)] = {
         teams, matches:[], started:true, scheduleMode:'manual',
-        promoteN: AUTO_PROMOTE_N, relegateN: AUTO_RELEGATE_N,
-        playoff: {enabled:div>1, playoffN:4, matches:[], winner:null}
+        promoteN, relegateN,
+        playoff: {enabled:div>1 && promoteN>0, playoffN:4, matches:[], winner:null}
       };
       started.push(div);
     } else if(teams.length>=2){
       db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
       db.seasons[String(yr)].divisions[String(div)] = {
         teams, matches:genMatches(teams), started:true, scheduleMode:'auto',
-        promoteN: AUTO_PROMOTE_N, relegateN: AUTO_RELEGATE_N,
-        playoff: {enabled:div>1, playoffN:4, matches:[], winner:null}
+        promoteN, relegateN,
+        playoff: {enabled:div>1 && promoteN>0, playoffN:4, matches:[], winner:null}
       };
       started.push(div);
     } else {
@@ -1207,16 +1297,21 @@ function startNewSeason(){
     }
   });
 
+  // シーズンのメタ情報（表示名・並び順）を保存
+  if(!db.seasonMeta) db.seasonMeta = {};
+  db.seasonMeta[String(yr)] = { label: seasonLabel, order: yr };
+
   save(db);
   invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   refreshSeasonSelects();
+  buildSeasonMetaForm();
   renderTeamEditor();
   loadStandings();
   loadMatches();
   renderHistAlltime();
 
   msg.style.color='var(--g)';
-  msg.textContent = `✓ ${yr}年目を開始しました（${started.map(d=>getDivName(d)).join('・')}）${moves.length?` / 昇降格${moves.length}件反映`:''}${skipped.length?` / チーム不足で未開始: ${skipped.map(d=>getDivName(d)).join('・')}`:''}`;
+  msg.textContent = `✓ ${displayName}を開始しました（${started.map(d=>getDivName(d)).join('・')}）${moves.length?` / 昇降格${moves.length}件反映`:''}${skipped.length?` / チーム不足で未開始: ${skipped.map(d=>getDivName(d)).join('・')}`:''}`;
 }
 
 function buildDivNameForm(){
@@ -1240,6 +1335,48 @@ function saveDivName(div){
   buildDivTabs('dtabs-home',curDiv.home,d=>{curDiv.home=d;loadStandings();});
   buildDivTabs('dtabs-matches',curDiv.matches,d=>{curDiv.matches=d;loadMatches();});
   renderTeamEditor();
+}
+
+// ══ シーズンの表示名・並び順の編集 ══
+function buildSeasonMetaForm(){
+  const el = document.getElementById('season-meta-list');
+  if(!el) return;
+  const seasons = getSeasons();
+  if(!seasons.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">シーズンがありません</div>';
+    return;
+  }
+  let html = '';
+  seasons.forEach(yr=>{
+    const m = getSeasonMeta(yr);
+    html += `<div style="display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--divider);">
+      <span style="flex:0 0 42px;font-size:11px;color:var(--muted);">${yr}</span>
+      <input type="text" id="sm-label-${yr}" value="${(m.label||'').replace(/"/g,'&quot;')}"
+        placeholder="${yr}年目" style="flex:1;font-size:12px;padding:6px 8px;">
+      <input type="number" id="sm-order-${yr}" value="${getSeasonOrder(yr)}"
+        title="並び順（大きいほど新しい）" style="flex:0 0 64px;font-size:12px;padding:6px 6px;">
+      <button class="btn btn-sub btn-sm" style="flex:0 0 auto;" onclick="saveSeasonMeta('${yr}')">保存</button>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function saveSeasonMeta(yr){
+  const label = document.getElementById(`sm-label-${yr}`)?.value.trim() || '';
+  const orderRaw = document.getElementById(`sm-order-${yr}`)?.value;
+  const order = orderRaw==='' ? (parseInt(yr)||0) : (parseInt(orderRaw)||0);
+
+  if(!db.seasonMeta) db.seasonMeta = {};
+  db.seasonMeta[String(yr)] = { label, order };
+  save(db);
+
+  // シーズン名や並び順は各画面に影響するため、まとめて更新する
+  buildSeasonMetaForm();
+  refreshSeasonSelects();
+  loadStandings();
+  loadMatches();
+  renderHistAlltime();
+  alert('保存しました');
 }
 
 function buildCupNameForm(){
@@ -1417,18 +1554,21 @@ function deleteSeason(){
     return `${getDivName(d)}: ${teamCount}チーム / ${matchCount}試合`;
   }).filter(Boolean).join('\n');
 
-  if(!confirm(`「${yr}年目」を完全に削除します。\n\n${summary}\n\nこの操作は取り消せません。本当によろしいですか？`)) return;
+  if(!confirm(`「${getSeasonLabel(yr)}」を完全に削除します。\n\n${summary}\n\nこの操作は取り消せません。本当によろしいですか？`)) return;
 
   delete db.seasons[yr];
+  if(db.seasonMeta) delete db.seasonMeta[String(yr)]; // シーズンのメタ情報も併せて削除
+
   save(db);
   invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
   refreshSeasonSelects();
+  buildSeasonMetaForm();
   renderTeamEditor();
   loadStandings();
   loadMatches();
   renderHistAlltime();
   msg.style.color='var(--g)';
-  msg.textContent = `✓ 「${yr}年目」を削除しました`;
+  msg.textContent = `✓ 「${getSeasonLabel(yr)}」を削除しました`;
   setTimeout(()=>msg.textContent='', 3000);
 }
 
@@ -1503,7 +1643,7 @@ function showH2H(){
     hist.forEach(h=>{
       const rc=h.res==='W'?'var(--g)':h.res==='L'?'var(--red)':'var(--gold)';
       html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
-        <div style="font-size:11px;color:var(--muted);flex:0 0 auto;">${h.yr}年目<br>${h.divLabel}</div>
+        <div style="font-size:11px;color:var(--muted);flex:0 0 auto;">${getSeasonLabel(h.yr)}<br>${h.divLabel}</div>
         <div style="flex:1;text-align:center;font-size:13px;font-weight:700;">${h.home} ${h.hs}−${h.as_} ${h.away}</div>
         <div style="font-size:15px;font-weight:700;color:${rc};flex:0 0 auto;">${h.res}</div>
       </div>`;
@@ -1752,7 +1892,7 @@ function renderStreaksRanking(){
       const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
       html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
         <td style="font-weight:700;color:var(--g);">${r.streak}連勝</td>
-        <td style="font-size:11px;color:var(--muted);">${r.end.yr}年目 ${getDivName(r.end.div)}</td></tr>`;
+        <td style="font-size:11px;color:var(--muted);">${getSeasonLabel(r.end.yr)} ${getDivName(r.end.div)}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -1767,7 +1907,7 @@ function renderStreaksRanking(){
       const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
       html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
         <td style="font-weight:700;color:var(--red);">${r.streak}連敗</td>
-        <td style="font-size:11px;color:var(--muted);">${r.end.yr}年目 ${getDivName(r.end.div)}</td></tr>`;
+        <td style="font-size:11px;color:var(--muted);">${getSeasonLabel(r.end.yr)} ${getDivName(r.end.div)}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -1877,7 +2017,7 @@ function renderUpsetsRanking(){
           <span style="font-size:15px;font-weight:700;color:var(--gold);width:24px;flex:0 0 auto;">${i+1}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;">${r.winner} ${r.hs}−${r.as_} ${r.loser}</div>
-            <div style="font-size:10px;color:var(--muted);">${r.yr}年目 ${label}</div>
+            <div style="font-size:10px;color:var(--muted);">${getSeasonLabel(r.yr)} ${label}</div>
           </div>
           <span style="font-size:12px;font-weight:700;color:var(--red);flex:0 0 auto;">勝率${r.winnerProb}%</span>
         </div>`;
@@ -1901,7 +2041,7 @@ function renderRatingSnapshots(){
     return;
   }
 
-  const opts = years.map(y=>`<option value="${y}">${y}年目 開幕時</option>`).join('');
+  const opts = years.map(y=>`<option value="${y}">${getSeasonLabel(y)} 開幕時</option>`).join('');
   el.innerHTML = `
     <div style="display:flex;gap:6px;align-items:center;padding:10px 12px;">
       <select id="snap-yr" style="flex:1;font-size:13px;padding:6px 8px;" onchange="showRatingSnapshot()">${opts}</select>
@@ -1926,10 +2066,10 @@ function showRatingSnapshot(){
   const savedDate = snap.savedAt ? new Date(snap.savedAt).toLocaleDateString('ja-JP') : '—';
 
   let html = `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
-    ${yr}年目の開幕時点で保存されたレーティングです（保存日: ${savedDate}）。<br>
+    ${getSeasonLabel(yr)}の開幕時点で保存されたレーティングです（保存日: ${savedDate}）。<br>
     リーグ標準ホームアドバンテージ: ${snap.leagueHomeAdv ?? '—'}pt
   </p>`;
-  html += `<div class="slbl">📸 ${yr}年目 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
+  html += `<div class="slbl">📸 ${getSeasonLabel(yr)} 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>開幕時ELO</th><th>HA</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -2370,7 +2510,7 @@ function renderHistInseason(){
   const seasons=getSeasons();
   let html=`<div style="display:flex;gap:6px;padding:10px 12px;flex-wrap:wrap;">
     <select id="is-yr" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
-      ${seasons.map(y=>`<option value="${y}">${y}年目</option>`).join('')}
+      ${seasons.map(y=>`<option value="${y}">${getSeasonLabel(y)}</option>`).join('')}
     </select>
     <select id="is-div" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
       ${[1,2,3].map(d=>`<option value="${d}">${getDivName(d)}</option>`).join('')}
@@ -2496,7 +2636,25 @@ function poissonPmf(k, lambda){
 }
 
 // 2チームの期待得点から、勝ち/分け/負けの確率と最有力スコアを厳密に計算する
-function computeMatchProbabilities(lamH, lamA, maxGoals=8){
+// 補正が掛け算で積み重なると、まれに「勝率97%」のような極端な予想になってしまう。
+// 実際のサッカーでは番狂わせが起こるため、両チームの期待得点の比に上限を設けて現実的な範囲に収める。
+const MAX_LAMBDA_RATIO = 4;
+function balanceLambdas(lamH, lamA){
+  const total = lamH + lamA;
+  if(total <= 0) return [lamH, lamA];
+  const ratio = lamH / lamA;
+  if(ratio > MAX_LAMBDA_RATIO){
+    const newA = total/(1+MAX_LAMBDA_RATIO);
+    return [total-newA, newA];      // 合計得点は保ったまま差を圧縮
+  }
+  if(ratio < 1/MAX_LAMBDA_RATIO){
+    const newH = total/(1+MAX_LAMBDA_RATIO);
+    return [newH, total-newH];
+  }
+  return [lamH, lamA];
+}
+
+function computeMatchProbabilities(lamH, lamA, maxGoals=12){
   let pH=0, pD=0, pA=0;
   const scoreProbs=[];
   for(let h=0;h<=maxGoals;h++){
@@ -2506,6 +2664,9 @@ function computeMatchProbabilities(lamH, lamA, maxGoals=8){
       scoreProbs.push({h,a,p});
     }
   }
+  // 打ち切りによる取りこぼし分を按分し、合計がちょうど100%になるようにする
+  const total = pH+pD+pA;
+  if(total>0){ pH/=total; pD/=total; pA/=total; scoreProbs.forEach(s=>s.p/=total); }
   scoreProbs.sort((x,y)=>y.p-x.p);
   return {pH, pD, pA, topScores:scoreProbs.slice(0,3)};
 }
@@ -2561,6 +2722,17 @@ function renderNextRoundForecast(){
       lamH *= hMult;
       lamA /= Math.max(0.85, hMult);
 
+      // 順位予想と同じ基準で、直近の調子（勝点ペース＋得失点差）を反映する
+      const NEUTRAL_F = 1.3, K_FORM_F = 0.45, K_GD_F = 0.04;
+      const formMult = (t)=>{
+        let mm = 1;
+        if(t.recentAvg!=null) mm *= (1 + (t.recentAvg-NEUTRAL_F)*K_FORM_F/3);
+        if(t.recentGd!=null)  mm *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD_F);
+        return Math.max(0.7, Math.min(1.4, mm));
+      };
+      lamH *= formMult(getTeamTendency(yr, div, h));
+      lamA *= formMult(getTeamTendency(yr, div, a));
+
       const h2h = getH2HStats(h, a);
       if(h2h && h2h.total>=2){
         const blend = Math.min(0.25, h2h.total*0.03);
@@ -2569,6 +2741,7 @@ function renderNextRoundForecast(){
       }
       lamH = Math.max(0.15, Math.min(5.0, lamH));
       lamA = Math.max(0.15, Math.min(5.0, lamA));
+      [lamH, lamA] = balanceLambdas(lamH, lamA);
 
       const {pH, pD, pA, topScores} = computeMatchProbabilities(lamH, lamA);
       const pHp = Math.round(pH*100), pDp = Math.round(pD*100), pAp = Math.round(pA*100);
@@ -3047,7 +3220,7 @@ function resolveCupWalkovers(yr, slot){
 }
 
 function deleteCup(yr, slot){
-  if(!confirm(`${getCupName(slot)}（${yr}年目）を削除します。よろしいですか？`)) return;
+  if(!confirm(`${getCupName(slot)}（${getSeasonLabel(yr)}）を削除します。よろしいですか？`)) return;
   if(db.cups[String(yr)]) delete db.cups[String(yr)][String(slot)];
   save(db);
   invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
@@ -3470,6 +3643,7 @@ function computeTeamHomeAdvantagesUncached(precomputedElo){
 let _eloCache = null, _eloCacheSeq = null, _eloCacheSig = null;
 let _haCache = null, _haCacheSeq = null, _haCacheSig = null;
 let _h2hIndex = null, _h2hSeq = null, _h2hSig = null;
+let _prevAdCache = null, _prevAdSeq = null, _prevAdSig = null;
 
 // シーズン・カップの構成変更（削除や新規作成など）も検知するための簡易シグネチャ
 function eloDataSignature(){
@@ -3492,6 +3666,7 @@ function invalidateEloCache(){
   _eloCache = null; _eloCacheSeq = null; _eloCacheSig = null;
   _haCache = null; _haCacheSeq = null; _haCacheSig = null;
   _h2hIndex = null; _h2hSeq = null; _h2hSig = null;
+  _prevAdCache = null; _prevAdSeq = null; _prevAdSig = null;
 }
 
 // 全試合（リーグ戦＋カップ戦）を「実際に保存した順（playedAt）」で並べてELOを再計算。
@@ -3652,7 +3827,7 @@ function getAttackDefenseTableAll(){
 // チームの「直近フォーム」「ホーム成績」「アウェイ成績」を計算（当該シーズン内）
 function getTeamTendency(yr, div, team){
   const d = getDivData(yr, div);
-  if(!d) return {recentAvg:null, homeAvg:null, awayAvg:null};
+  if(!d) return {recentAvg:null, homeAvg:null, awayAvg:null, recentGd:null};
   const played = (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team))
     .sort((a,b)=>a.leg-b.leg||a.round-b.round||a.id-b.id);
 
@@ -3662,16 +3837,25 @@ function getTeamTendency(yr, div, team){
     const ga = isHome?m.away_score:m.home_score;
     return gf>ga?3:gf===ga?1:0;
   };
+  const gdFor = m=>{
+    const isHome = m.home===team;
+    const gf = isHome?m.home_score:m.away_score;
+    const ga = isHome?m.away_score:m.home_score;
+    return gf-ga;
+  };
 
   const recent = played.slice(-5);
   const recentAvg = recent.length ? recent.reduce((s,m)=>s+ptsFor(m),0)/recent.length : null;
+  // 【案D】勝点だけでは「辛勝continuous」と「大勝continuous」が同じ扱いになるため、
+  //        直近の平均得失点差も調子の指標として持たせる
+  const recentGd = recent.length ? recent.reduce((s,m)=>s+gdFor(m),0)/recent.length : null;
 
   const homeMatches = played.filter(m=>m.home===team);
   const awayMatches = played.filter(m=>m.away===team);
   const homeAvg = homeMatches.length ? homeMatches.reduce((s,m)=>s+ptsFor(m),0)/homeMatches.length : null;
   const awayAvg = awayMatches.length ? awayMatches.reduce((s,m)=>s+ptsFor(m),0)/awayMatches.length : null;
 
-  return {recentAvg, homeAvg, awayAvg};
+  return {recentAvg, homeAvg, awayAvg, recentGd};
 }
 
 // 2チームの全シーズン通算・直接対決成績（得点も含む）
@@ -3741,16 +3925,85 @@ function poissonRandom(lambda){
 //   除数を小さくすると勝率が極端に開くので、実際のサッカーの水準（ELO差300で勝率6〜7割程度）に
 //   合わせて 800 を採用している。
 const ELO_TO_STRENGTH = 800;
+// 指定シーズン・部門での「素の攻撃力・守備力」（ELOを混ぜない、実績だけの値）を返す。
+// 前シーズンの実力を引き継ぐために使う。
+function getRawAttackDefense(yr, div, team){
+  const d = getDivData(yr, div);
+  if(!d) return null;
+  const played = (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team));
+  const games = played.length;
+  if(games < 3) return null; // サンプルが少なすぎる場合は使わない
+
+  let gf=0, ga=0;
+  played.forEach(m=>{
+    const isHome = m.home===team;
+    gf += isHome? m.home_score : m.away_score;
+    ga += isHome? m.away_score : m.home_score;
+  });
+  const avg = getLeagueAvgGoals(div);
+  if(!(avg>0)) return null;
+
+  // 【案C】試合数が少ないうちは極端な値をリーグ平均(1.0)へ寄せる
+  const wExtreme = games/(games+EXTREME_SHRINK);
+  const rawA = (gf/games)/avg, rawD = (ga/games)/avg;
+  return {
+    attack: wExtreme*rawA + (1-wExtreme)*1.0,
+    defense: wExtreme*rawD + (1-wExtreme)*1.0,
+    games,
+  };
+}
+
+// そのチームが「直前のシーズン」でどれだけの攻守力だったかを探す。
+// 部門をまたいで昇降格していても追えるよう、全部門を探索する。
+// 予測ではチームごとに繰り返し呼ばれるため、結果をキャッシュする。
+function getPrevSeasonAttackDefense(yr, team){
+  const sig = eloDataSignature();
+  if(!_prevAdCache || _prevAdSeq!==db._seq || _prevAdSig!==sig){
+    _prevAdCache = {}; _prevAdSeq = db._seq; _prevAdSig = sig;
+  }
+  const key = `${yr}\u0000${team}`;
+  if(key in _prevAdCache) return _prevAdCache[key];
+
+  const seasons = getSeasons(); // 新しい順
+  const idx = seasons.indexOf(String(yr));
+  let result = null;
+  if(idx !== -1){
+    // 現在のシーズンより1つ古いものから順に、そのチームが在籍したシーズンを探す
+    outer:
+    for(let k=idx+1; k<seasons.length; k++){
+      const pyr = seasons[k];
+      for(const pd of [1,2,3]){
+        const pdata = getDivData(pyr, pd);
+        if(pdata && pdata.teams && pdata.teams.includes(team)){
+          const ad = getRawAttackDefense(pyr, pd, team);
+          if(ad){ result = ad; break outer; }
+        }
+      }
+    }
+  }
+  _prevAdCache[key] = result;
+  return result;
+}
+
+const EXTREME_SHRINK = 8;   // 【案C】少ない試合数での極端な攻守力を抑える強さ
+const PREV_SEASON_W = 0.7;  // 【案A】今季の実績が薄いとき、前季の攻守力をどれだけ信頼するか
+
 function getAttackDefense(yr, div, team, elo){
   const rating = elo[team]!==undefined ? elo[team] : ELO_BASE;
   const attackFromElo = Math.max(0.3, Math.min(2.5, 1 + (rating-ELO_BASE)/ELO_TO_STRENGTH));
   const defenseFromElo = Math.max(0.3, Math.min(2.5, 1 - (rating-ELO_BASE)/ELO_TO_STRENGTH));
 
+  // 【案A】今季のデータが足りない分は、まず前シーズンの攻守力で補い、
+  //        それも無ければELO由来の値にフォールバックする
+  const prev = getPrevSeasonAttackDefense(yr, team);
+  const baseAttack  = prev ? (PREV_SEASON_W*prev.attack  + (1-PREV_SEASON_W)*attackFromElo)  : attackFromElo;
+  const baseDefense = prev ? (PREV_SEASON_W*prev.defense + (1-PREV_SEASON_W)*defenseFromElo) : defenseFromElo;
+
   const d = getDivData(yr, div);
   const played = d ? (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)) : [];
   const games = played.length;
 
-  if(!games) return { attack: attackFromElo, defense: defenseFromElo, games: 0 };
+  if(!games) return { attack: baseAttack, defense: baseDefense, games: 0 };
 
   let gf=0, ga=0;
   played.forEach(m=>{
@@ -3764,11 +4017,11 @@ function getAttackDefense(yr, div, team, elo){
   const rawAttack = LEAGUE_AVG_GOALS>0 ? avgGf/LEAGUE_AVG_GOALS : 1.0;
   const rawDefense = LEAGUE_AVG_GOALS>0 ? avgGa/LEAGUE_AVG_GOALS : 1.0;
 
-  // 縮小推定：試合数が増えるほど実績（raw）の重みを増やす
+  // 縮小推定：試合数が増えるほど今季の実績を重視する
   const K_SHRINK = 5;
   const w = games/(games+K_SHRINK);
-  const attack = w*rawAttack + (1-w)*attackFromElo;
-  const defense = w*rawDefense + (1-w)*defenseFromElo;
+  const attack = w*rawAttack + (1-w)*baseAttack;
+  const defense = w*rawDefense + (1-w)*baseDefense;
 
   return {
     attack: Math.max(0.2, Math.min(3.0, attack)),
@@ -3911,7 +4164,16 @@ function predictStandings(yr, div, simulations=20000){
   };
 
   const NEUTRAL = 1.3; // 平均的な1試合あたり勝点の目安（3勝1分の中間的水準）
-  const K_FORM = 0.15;  // 直近フォームによる期待得点の補正係数
+  const K_FORM = 0.45;  // 【案B】直近フォーム（勝点ペース）による期待得点の補正係数
+  const K_GD = 0.04;    // 【案D】直近の平均得失点差による補正係数（大勝/辛勝の違いを反映）
+
+  // 直近の調子を、勝点ペースと得失点差の両面から得点倍率に変換する
+  const formMultiplier = (t)=>{
+    let m = 1;
+    if(t.recentAvg!=null) m *= (1 + (t.recentAvg-NEUTRAL)*K_FORM/3);
+    if(t.recentGd!=null)  m *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD);
+    return Math.max(0.7, Math.min(1.4, m)); // 効きすぎないよう上下限を設ける
+  };
 
   // 直近フォームはチーム単位で決まるので、試合ごとに再計算せず先に一度だけ求めておく
   const tendency = {};
@@ -3933,8 +4195,8 @@ function predictStandings(yr, div, simulations=20000){
 
     // 直近フォームを軽く反映（勝点ペースが良ければ得点期待値を少し上げる）
     const tH = tendency[h], tA = tendency[a];
-    if(tH.recentAvg!=null) lamH *= (1 + (tH.recentAvg-NEUTRAL)*K_FORM/3);
-    if(tA.recentAvg!=null) lamA *= (1 + (tA.recentAvg-NEUTRAL)*K_FORM/3);
+    lamH *= formMultiplier(tH);
+    lamA *= formMultiplier(tA);
 
     // 直接対決の得点傾向を軽くブレンド（h視点でのaAvgGoals/bAvgGoalsをそのままホーム/アウェイに対応させる）
     const h2h = getH2HStats(h, a);
@@ -3947,6 +4209,7 @@ function predictStandings(yr, div, simulations=20000){
     // 極端な値を抑制（0.15〜5.0点の範囲に収める）
     lamH = Math.max(0.15, Math.min(5.0, lamH));
     lamA = Math.max(0.15, Math.min(5.0, lamA));
+    [lamH, lamA] = balanceLambdas(lamH, lamA);
 
     return {home:h, away:a, lamH, lamA};
   });
@@ -4252,5 +4515,4 @@ function buildEloTableHtml(){
 init();
 </script>
 </body>
-</html>
 </html>
