@@ -512,9 +512,63 @@ canvas{display:block;max-width:100%;}
 
 // ══ 1. DB (localStorage) ══
 const KEY = 'winner-final-v1';
+// ══ 保存データの圧縮 ══
+// 試合データはチーム名を文字列でそのまま持つと容量を大きく消費する（1試合あたり100文字超）。
+// 保存時はチーム名を「そのシーズン・部門のチーム一覧における番号」に置き換え、
+// 読み込み時に元へ戻す。アプリ内部で扱う形は従来どおりなので、他の処理に影響しない。
+const COMPRESS_FLAG = '_cv'; // 圧縮済みデータであることの目印（バージョン番号）
+
+function compressDb(src){
+  const d = JSON.parse(JSON.stringify(src)); // 元データを壊さないよう複製してから加工する
+  Object.values(d.seasons||{}).forEach(season=>{
+    Object.values(season.divisions||{}).forEach(dv=>{
+      if(!dv.matches || !dv.teams) return;
+      const idx = {};
+      dv.teams.forEach((t,i)=>{ idx[t]=i; });
+      dv.matches = dv.matches.map(m=>{
+        const o = {i:m.id, r:m.round, l:m.leg};
+        // チーム名は番号に。一覧に無い名前だけ文字列のまま残す（安全策）
+        o.h = (idx[m.home]!==undefined) ? idx[m.home] : m.home;
+        o.a = (idx[m.away]!==undefined) ? idx[m.away] : m.away;
+        if(m.played){
+          o.p = 1;
+          o.hs = m.home_score; o.as = m.away_score;
+          if(m.playedAt!==undefined) o.t = m.playedAt;
+        }
+        return o;
+      });
+    });
+  });
+  d[COMPRESS_FLAG] = 1;
+  return d;
+}
+
+function decompressDb(d){
+  if(!d || !d[COMPRESS_FLAG]) return d; // 旧形式（未圧縮）はそのまま使う
+  Object.values(d.seasons||{}).forEach(season=>{
+    Object.values(season.divisions||{}).forEach(dv=>{
+      if(!dv.matches || !dv.teams) return;
+      dv.matches = dv.matches.map(o=>{
+        const m = {
+          id:o.i, round:o.r, leg:o.l,
+          home: (typeof o.h==='number') ? dv.teams[o.h] : o.h,
+          away: (typeof o.a==='number') ? dv.teams[o.a] : o.a,
+          home_score: o.p ? o.hs : null,
+          away_score: o.p ? o.as : null,
+          played: !!o.p,
+        };
+        if(o.t!==undefined) m.playedAt = o.t;
+        return m;
+      });
+    });
+  });
+  delete d[COMPRESS_FLAG];
+  return d;
+}
+
 function load(){
   let d;
-  try{ d = JSON.parse(localStorage.getItem(KEY))||init_db(); }catch(e){ d = init_db(); }
+  try{ d = decompressDb(JSON.parse(localStorage.getItem(KEY))) || init_db(); }catch(e){ d = init_db(); }
   if(!d.cups) d.cups = {};
   if(!d.config) d.config = {};
   if(!d.config.cup_names) d.config.cup_names = {1:"天皇杯",2:"ルヴァンカップ"};
@@ -544,7 +598,7 @@ function migrateCupsToSlots(d){
 let _saveErrorShown = false;
 function save(db){
   try{
-    localStorage.setItem(KEY, JSON.stringify(db));
+    localStorage.setItem(KEY, JSON.stringify(compressDb(db)));
     _saveErrorShown = false;
     return true;
   }catch(e){
@@ -563,8 +617,8 @@ function save(db){
 // 現在の保存データのサイズを返す（設定画面での表示用）
 function getStorageInfo(){
   try{
-    const json = JSON.stringify(db);
-    return { bytes: json.length, mb: (json.length/1024/1024) };
+    const json = JSON.stringify(compressDb(db)); // 実際に保存される（圧縮後の）サイズを測る
+    return { bytes: json.length, mb: (json.length*2/1024/1024) }; // localStorageはUTF-16換算で見る
   }catch(e){ return null; }
 }
 function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{}, seasonMeta:{} }; }
