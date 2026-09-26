@@ -385,9 +385,13 @@ canvas{display:block;max-width:100%;}
     <div class="card-body">
       <div id="storage-info" style="font-size:12px;margin-bottom:10px;padding:8px 10px;background:var(--surface-alt);border-radius:8px;"></div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
-        全シーズン・全部門の試合結果をCSVファイルとして書き出します。定期的なバックアップにご利用ください。
+        <b>全データ（JSON）</b>…カップ戦・レーティング履歴・シーズン設定まで含めた完全なバックアップです。別の端末やブラウザへの引っ越しにも使えます。<br>
+        <b>試合結果（CSV）</b>…Excel等で見るための書き出しです。
       </p>
-      <button class="btn btn-g btn-sm btn-full" onclick="exportMatchesCSV()">📥 試合結果をCSVで書き出す</button>
+      <button class="btn btn-g btn-sm btn-full" onclick="exportFullBackup()">🗄️ 全データをファイルに書き出す</button>
+      <button class="btn btn-sub btn-sm btn-full" style="margin-top:6px;" onclick="triggerImportBackup()">📂 バックアップファイルから復元する</button>
+      <input type="file" id="backup-file" accept=".json,application/json" style="display:none;" onchange="importFullBackup(this)">
+      <button class="btn btn-sub btn-sm btn-full" style="margin-top:6px;" onclick="exportMatchesCSV()">📥 試合結果をCSVで書き出す</button>
       <button class="btn btn-sub btn-sm btn-full" style="margin-top:6px;" onclick="testSave()">🔍 保存が正常に動くか確認する</button>
       <div id="csv-export-msg" style="font-size:12px;margin-top:8px;"></div>
     </div>
@@ -566,9 +570,68 @@ function decompressDb(d){
   return d;
 }
 
-function load(){
+// ══ IndexedDB による保存 ══
+// localStorageは概ね5MBで上限に達するため、容量制限が実質的に問題にならない
+// IndexedDBを主たる保存先とする。IndexedDBが使えない環境ではlocalStorageへ自動的に戻る。
+const IDB_NAME  = 'winner-pro-db';
+const IDB_STORE = 'kv';
+const IDB_KEY   = 'main';
+let _idb = null;            // 開いているデータベース接続
+let _idbAvailable = false;  // IndexedDBを保存先として使えるか
+
+function openIdb(){
+  return new Promise((resolve)=>{
+    if(!window.indexedDB){ resolve(null); return; }
+    let req;
+    try{ req = indexedDB.open(IDB_NAME, 1); }catch(e){ resolve(null); return; }
+    let done = false;
+    const finish = (v)=>{ if(!done){ done = true; resolve(v); } };
+    req.onupgradeneeded = ()=>{
+      const d = req.result;
+      if(!d.objectStoreNames.contains(IDB_STORE)) d.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = ()=> finish(req.result);
+    req.onerror   = ()=> finish(null);
+    req.onblocked = ()=> finish(null);
+    setTimeout(()=>finish(null), 4000); // 応答がない場合も起動を止めない
+  });
+}
+
+// 「空だった（ok:true, value:null）」と「読み取りに失敗した（ok:false）」を区別する。
+// これを混同すると、読み取り失敗時に古いデータで上書きしてしまう恐れがある。
+function idbGet(){
+  return new Promise((resolve)=>{
+    if(!_idb){ resolve({ok:false, value:null}); return; }
+    try{
+      const tx = _idb.transaction(IDB_STORE, 'readonly');
+      const rq = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      rq.onsuccess = ()=> resolve({ok:true, value: rq.result === undefined ? null : rq.result});
+      rq.onerror   = ()=> resolve({ok:false, value:null});
+      tx.onabort   = ()=> resolve({ok:false, value:null});
+    }catch(e){ resolve({ok:false, value:null}); }
+  });
+}
+
+function idbSet(value){
+  return new Promise((resolve)=>{
+    if(!_idb){ resolve(false); return; }
+    try{
+      const tx = _idb.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, IDB_KEY);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror    = ()=> resolve(false);
+      tx.onabort    = ()=> resolve(false);
+    }catch(e){ resolve(false); }
+  });
+}
+
+// raw を渡した場合はそのデータから、省略時はlocalStorageから読み込む
+function load(raw){
   let d;
-  try{ d = decompressDb(JSON.parse(localStorage.getItem(KEY))) || init_db(); }catch(e){ d = init_db(); }
+  try{
+    const src = (raw !== undefined && raw !== null) ? raw : JSON.parse(localStorage.getItem(KEY));
+    d = decompressDb(src) || init_db();
+  }catch(e){ d = init_db(); }
   if(!d.cups) d.cups = {};
   if(!d.config) d.config = {};
   if(!d.config.cup_names) d.config.cup_names = {1:"天皇杯",2:"ルヴァンカップ"};
@@ -597,8 +660,20 @@ function migrateCupsToSlots(d){
 // 失敗時は必ず利用者に知らせる。
 let _saveErrorShown = false;
 function save(db){
+  const payload = compressDb(db);
+  if(_idbAvailable){
+    // IndexedDBへの書き込みは非同期なので、失敗した場合のみ後から知らせる
+    idbSet(payload).then(ok=>{
+      if(ok){ _saveErrorShown = false; return; }
+      if(!_saveErrorShown){
+        _saveErrorShown = true;
+        alert('⚠️ 保存に失敗しました。\n\n設定タブの「🔍 保存が正常に動くか確認する」で状態をご確認ください。');
+      }
+    });
+    return true;
+  }
   try{
-    localStorage.setItem(KEY, JSON.stringify(compressDb(db)));
+    localStorage.setItem(KEY, JSON.stringify(payload));
     _saveErrorShown = false;
     return true;
   }catch(e){
@@ -606,7 +681,7 @@ function save(db){
     if(!_saveErrorShown){
       _saveErrorShown = true; // 連続で何度も出さない
       alert(quota
-        ? '⚠️ 保存できませんでした（ブラウザの保存容量が上限に達しています）\n\n設定タブの「💾 バックアップ（CSV書き出し）」でデータを書き出したうえで、\n不要なシーズンを削除してください。'
+        ? '⚠️ 保存できませんでした（ブラウザの保存容量が上限に達しています）\n\n設定タブの「🗄️ 全データをファイルに書き出す」でバックアップを取ったうえで、\n不要なシーズンを削除してください。'
         : `⚠️ 保存できませんでした\n\n${e && e.message ? e.message : e}\n\nプライベートブラウジング中の場合は、通常モードでお試しください。`);
     }
     console.error('localStorage save failed:', e);
@@ -618,7 +693,12 @@ function save(db){
 function getStorageInfo(){
   try{
     const json = JSON.stringify(compressDb(db)); // 実際に保存される（圧縮後の）サイズを測る
-    return { bytes: json.length, mb: (json.length*2/1024/1024) }; // localStorageはUTF-16換算で見る
+    // localStorageはUTF-16換算（1文字2バイト）、IndexedDBは実バイト数に近いのでそのまま
+    return {
+      bytes: json.length,
+      mb: _idbAvailable ? (json.length/1024/1024) : (json.length*2/1024/1024),
+      idb: _idbAvailable
+    };
   }catch(e){ return null; }
 }
 function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{}, seasonMeta:{} }; }
@@ -1600,8 +1680,9 @@ function buildStorageInfo(){
   const info = getStorageInfo();
   if(!info){ el.innerHTML = '<span style="color:var(--red);">保存データの読み取りに失敗しました</span>'; return; }
 
-  // localStorageの上限は概ね5MB程度（ブラウザにより差がある）
-  const LIMIT_MB = 5;
+  // 保存先によって上限が大きく異なる（localStorage:約5MB / IndexedDB:数百MB〜）
+  const LIMIT_MB = info.idb ? 500 : 5;
+  const backend = info.idb ? 'IndexedDB' : 'localStorage';
   const pct = Math.min(100, info.mb/LIMIT_MB*100);
   const color = pct>80 ? 'var(--red)' : pct>60 ? 'var(--gold)' : 'var(--g)';
   const seasonCount = Object.keys(db.seasons||{}).length;
@@ -1620,13 +1701,35 @@ function buildStorageInfo(){
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:5px;">
       ${seasonCount}シーズン ／ ${matchCount.toLocaleString()}試合を保存中
+      ・保存先: <span style="font-weight:700;color:${info.idb?'var(--g)':'var(--gold)'};">${backend}</span>
     </div>
-    ${pct>80 ? '<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ 上限が近づいています。CSVで書き出したうえで、古いシーズンの削除をご検討ください。</div>' : ''}`;
+    ${!info.idb ? '<div style="font-size:11px;color:var(--gold);margin-top:4px;">※ このブラウザではIndexedDBが使えないため、容量の小さいlocalStorageに保存しています。</div>' : ''}
+    ${pct>80 ? '<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠️ 上限が近づいています。全データをファイルに書き出したうえで、古いシーズンの削除をご検討ください。</div>' : ''}`;
 }
 
 // 実際に書き込みが通るかを試す（「保存したのに消える」状態の切り分け用）
-function testSave(){
+async function testSave(){
   const msg = document.getElementById('csv-export-msg');
+  if(_idbAvailable){
+    const ok = await idbSet(compressDb(db));
+    buildStorageInfo();
+    if(ok){
+      // 書き込んだものが実際に読み出せるかまで確認する
+      const back = await idbGet();
+      if(back.ok && back.value){
+        msg.style.color='var(--g)';
+        msg.textContent = '✓ 保存は正常に動作しています（IndexedDB）';
+      } else {
+        msg.style.color='var(--red)';
+        msg.textContent = '✕ 書き込みはできましたが読み出しに失敗しました';
+      }
+    } else {
+      msg.style.color='var(--red)';
+      msg.textContent = '✕ 保存に失敗しました（IndexedDBへ書き込めません）';
+    }
+    setTimeout(()=>{ msg.textContent=''; }, 5000);
+    return;
+  }
   try{
     const probe = '__winner_probe__';
     localStorage.setItem(probe, 'x');
@@ -1683,6 +1786,88 @@ function exportMatchesCSV(){
   msg.style.color='var(--g)';
   msg.textContent = `✓ ${rows.length-1}試合分を書き出しました`;
   setTimeout(()=>{ msg.textContent=''; }, 3000);
+}
+
+// ══ 7. 全データのバックアップ（JSONファイル） ══
+// CSVは試合結果のみだが、こちらはカップ戦・レーティング履歴・シーズン設定まで含めた
+// 完全なバックアップ。別の端末やブラウザへの引っ越しにも使える。
+const BACKUP_FORMAT = 'winner-pro-backup';
+
+function exportFullBackup(){
+  const msg = document.getElementById('csv-export-msg');
+  try{
+    const payload = {
+      format: BACKUP_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: compressDb(db)   // 圧縮形式のまま入れる（読み込み時に自動で復元される）
+    };
+    const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `winner_backup_${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const seasonCount = Object.keys(db.seasons||{}).length;
+    msg.style.color='var(--g)';
+    msg.textContent = `✓ 全データ（${seasonCount}シーズン）を書き出しました`;
+    setTimeout(()=>{ msg.textContent=''; }, 4000);
+  }catch(e){
+    msg.style.color='var(--red)';
+    msg.textContent = '✕ 書き出しに失敗しました: ' + (e && e.message ? e.message : e);
+  }
+}
+
+function triggerImportBackup(){
+  const input = document.getElementById('backup-file');
+  if(input){ input.value = ''; input.click(); }
+}
+
+function importFullBackup(input){
+  const msg = document.getElementById('csv-export-msg');
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    let raw;
+    try{
+      const parsed = JSON.parse(reader.result);
+      // {format, data} 形式でも、圧縮/非圧縮のDBそのままでも受け付ける
+      raw = (parsed && parsed.data) ? parsed.data : parsed;
+      if(!raw || typeof raw !== 'object' || !raw.seasons) throw new Error('シーズンデータが見つかりません');
+    }catch(e){
+      msg.style.color='var(--red)';
+      msg.textContent = '✕ このファイルは読み込めません（' + (e && e.message ? e.message : e) + '）';
+      return;
+    }
+
+    const newSeasons = Object.keys(raw.seasons||{}).length;
+    const curSeasons = Object.keys(db.seasons||{}).length;
+    if(!confirm(`バックアップを読み込みます。\n\n読み込むデータ: ${newSeasons}シーズン\n現在のデータ: ${curSeasons}シーズン\n\n⚠️ 現在のデータはすべて置き換えられます。よろしいですか？`)) return;
+
+    try{
+      db = load(raw);
+      invalidateEloCache();
+      if(!save(db)) throw new Error('保存に失敗しました');
+      init();
+      msg.style.color='var(--g)';
+      msg.textContent = `✓ ${newSeasons}シーズン分を読み込みました`;
+      setTimeout(()=>{ msg.textContent=''; }, 4000);
+    }catch(e){
+      msg.style.color='var(--red)';
+      msg.textContent = '✕ 読み込みに失敗しました: ' + (e && e.message ? e.message : e);
+    }
+  };
+  reader.onerror = ()=>{
+    msg.style.color='var(--red)';
+    msg.textContent = '✕ ファイルの読み取りに失敗しました';
+  };
+  reader.readAsText(file);
 }
 
 
@@ -4660,7 +4845,35 @@ function buildEloTableHtml(){
   return html;
 }
 
-init();
+// ══ 起動処理 ══
+// IndexedDBを開き、保存済みデータがあればそれを読み込んでからアプリを初期化する。
+// 初回起動時は、これまでlocalStorageに入っていたデータをIndexedDBへ引き継ぐ。
+async function boot(){
+  try{
+    _idb = await openIdb();
+    if(_idb){
+      const res = await idbGet();
+      if(!res.ok){
+        // 読み取りに失敗 → IndexedDBは使わず、localStorageのデータをそのまま使う
+        // （ここで書き込んでしまうと、古いデータで上書きしてしまう恐れがある）
+        _idbAvailable = false;
+      } else if(res.value){
+        _idbAvailable = true;
+        db = load(res.value);                // IndexedDB側のデータを採用
+      } else {
+        // IndexedDBは空 → 既存のlocalStorageデータ（あれば）をそのまま引き継ぐ
+        _idbAvailable = true;
+        const migrated = await idbSet(compressDb(db));
+        if(!migrated) _idbAvailable = false;  // 書き込めない環境ならlocalStorageのまま使う
+      }
+    }
+  }catch(e){
+    _idbAvailable = false;
+    console.error('IndexedDB init failed:', e);
+  }
+  init();
+}
+boot();
 </script>
 </body>
 </html>
