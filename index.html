@@ -2441,6 +2441,9 @@ function showTeamProfile(){
   // 通算成績（全体＋部門別に集計）
   const blank = () => ({p:0,w:0,d:0,l:0,gf:0,ga:0});
   const stats = { all: blank(), 1: blank(), 2: blank(), 3: blank() };
+  // 1試合記録（最大得点・最大失点・最大点差勝利・最大点差敗北）
+  let recMaxGF=null, recMaxGA=null, recMaxWin=null, recMaxLoss=null;
+  const consider = (cand, cur, better) => (cur===null || better(cand,cur)) ? cand : cur;
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
       const dd = getDivData(yr, div);
@@ -2453,6 +2456,11 @@ function showTeamProfile(){
           s.p++; s.gf+=my; s.ga+=opp;
           if(my>opp) s.w++; else if(my<opp) s.l++; else s.d++;
         });
+        const rec = { yr, div, opponent: isHome?m.away:m.home, my, opp, home: isHome };
+        recMaxGF   = consider(rec, recMaxGF,   (a,b)=>a.my>b.my);
+        recMaxGA   = consider(rec, recMaxGA,   (a,b)=>a.opp>b.opp);
+        if(my>opp) recMaxWin  = consider(rec, recMaxWin,  (a,b)=>(a.my-a.opp)>(b.my-b.opp));
+        if(my<opp) recMaxLoss = consider(rec, recMaxLoss, (a,b)=>(b.my-b.opp)>(a.my-a.opp));
       });
     });
   });
@@ -2542,6 +2550,25 @@ function showTeamProfile(){
         </div>`).join('')}
     </div>` : ''}
   </div></div>`;
+
+  if(recMaxGF){
+    const recRow = (rec, label, color, headline) => {
+      const vs = rec.home ? `${team} ${rec.my}-${rec.opp} ${rec.opponent}` : `${rec.opponent} ${rec.opp}-${rec.my} ${team}`;
+      return `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid #f0f2f5;gap:10px;">
+        <span style="font-size:11px;color:var(--muted);flex:0 0 72px;">${label}</span>
+        <span style="font-size:16px;font-weight:700;color:${color};flex:0 0 auto;">${headline}</span>
+        <span style="font-size:12px;flex:1;text-align:right;">
+          ${vs}<br><span style="color:var(--muted);font-size:10px;">${getSeasonLabel(rec.yr)}・${getDivName(rec.div)}</span>
+        </span>
+      </div>`;
+    };
+    html += `<div class="slbl">📈 1試合記録</div><div class="card">`;
+    html += recRow(recMaxGF, '最大得点', 'var(--g)', `${recMaxGF.my}点`);
+    html += recRow(recMaxGA, '最大失点', 'var(--red)', `${recMaxGA.opp}点`);
+    if(recMaxWin)  html += recRow(recMaxWin,  '最大点差勝利', 'var(--g)',  `+${recMaxWin.my-recMaxWin.opp}`);
+    if(recMaxLoss) html += recRow(recMaxLoss, '最大点差敗北', 'var(--red)', `-${recMaxLoss.opp-recMaxLoss.my}`);
+    html += `</div>`;
+  }
 
   if(log.length){
     html += `<div class="slbl">🔀 昇降格履歴</div><div class="card">`;
