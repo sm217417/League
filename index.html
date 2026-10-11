@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
@@ -222,6 +222,20 @@ canvas{display:block;max-width:100%;}
 .po-sinp{width:40px;height:34px;text-align:center;font-size:17px;font-weight:700;border:1px solid var(--border);border-radius:6px;background:var(--bg);}
 /* レスポンシブ */
 @media(min-width:600px){body{max-width:660px;margin:0 auto;}.bnav{max-width:660px;left:50%;transform:translateX(-50%);}}
+
+/* ── 操作改善版の追加分 ── */
+.sinp,.po-sinp{padding:0;color:var(--text);font-family:inherit;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield;}
+.sinp::-webkit-outer-spin-button,.sinp::-webkit-inner-spin-button,.po-sinp::-webkit-outer-spin-button,.po-sinp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.sinp:focus,.po-sinp:focus{background:var(--surface);border-color:var(--g);outline:none;box-shadow:0 0 0 3px rgba(0,168,84,.18);}
+.mteam.win{color:var(--g);}
+.rstep{flex:0 0 auto;width:38px;height:34px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;font-family:inherit;}
+.rstep:active{transform:scale(.94);background:var(--surface-alt);}
+#toast{position:fixed;left:50%;bottom:calc(70px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);max-width:min(88vw,420px);background:var(--text);color:var(--bg);font-size:12px;font-weight:700;line-height:1.5;padding:9px 14px;border-radius:10px;box-shadow:var(--shadow-md);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:200;text-align:center;}
+#toast.show{opacity:1;transform:translate(-50%,0);}
+#toast.err{background:var(--red);color:#fff;}
+.bnav{height:calc(58px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);}
+body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
+@media (prefers-reduced-motion: reduce){#toast{transition:none;}}
 </style>
 </head>
 <body>
@@ -246,9 +260,11 @@ canvas{display:block;max-width:100%;}
 <div class="page" id="pg-matches">
   <div class="phdr">
     <div class="ptitle">🏆 リーグ</div>
-    <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
-      <select id="m-round" style="font-size:12px;padding:5px 8px;" onchange="renderMatches()"><option value="all">全節</option></select>
-      <select id="m-status" style="font-size:12px;padding:5px 8px;" onchange="renderMatches()">
+    <div style="display:flex;gap:6px;margin-top:7px;align-items:center;">
+      <button class="rstep" onclick="stepRound(-1)" aria-label="前の節">◀</button>
+      <select id="m-round" style="font-size:13px;padding:6px 8px;flex:1;min-width:0;" onchange="renderMatches()"><option value="all">全節</option></select>
+      <button class="rstep" onclick="stepRound(1)" aria-label="次の節">▶</button>
+      <select id="m-status" style="font-size:13px;padding:6px 8px;flex:0 0 auto;width:auto;" onchange="renderMatches()">
         <option value="all">全試合</option><option value="pending">未入力</option><option value="done">入力済</option>
       </select>
     </div>
@@ -780,6 +796,7 @@ function go(name, btn){
   document.getElementById('pg-'+name).classList.add('active');
   btn.classList.add('active');
   window.scrollTo(0,0);
+  if(name==='home') loadStandings();
   if(name==='history') restoreHistoryView();
   if(name==='matches'){ loadMatches(); renderPlayoff(); }
   if(name==='predict') renderPredictPage();
@@ -1047,6 +1064,17 @@ function getContinuousRound(matches, leg, round){
 }
 
 // ══ 4. 試合入力（リーグ） ══
+let roundPick = {}; // 「年度-部門」ごとに、最後に見ていた節を覚えておく
+
+// 初期表示する節：未入力の試合が残っている最初の節（全部入力済みなら最終節）
+function defaultRoundKey(matches){
+  if(!matches.length) return 'all';
+  const withCr = matches.map(m=>({k:`${m.leg}-${m.round}`, cr:getContinuousRound(matches, m.leg, m.round), played:m.played}));
+  const pending = withCr.filter(x=>!x.played).sort((a,b)=>a.cr-b.cr);
+  if(pending.length) return pending[0].k;
+  return withCr.sort((a,b)=>b.cr-a.cr)[0].k;
+}
+
 function loadMatches(){
   const yr = latestSeason();
   const div = curDiv.matches;
@@ -1064,7 +1092,23 @@ function loadMatches(){
     const cr = getContinuousRound(matches, l, r);
     return `<option value="${k}">第${cr}節</option>`;
   }).join('');
+  const remembered = roundPick[`${yr}-${div}`];
+  const want = (remembered==='all' || rounds.includes(remembered)) ? remembered : defaultRoundKey(matches);
+  sel.value = want; if(sel.value!==want) sel.value='all';
   renderMatches();
+}
+
+// ◀ ▶ ボタンで前後の節へ移動
+function stepRound(delta){
+  const sel=document.getElementById('m-round');
+  const n=sel.options.length;
+  if(n<=1) return;
+  let i=sel.selectedIndex;
+  if(i<=0) i = delta>0 ? 1 : n-1;         // 「全節」からは最初／最後の節へ
+  else i = Math.min(n-1, Math.max(1, i+delta));
+  sel.selectedIndex=i;
+  renderMatches();
+  window.scrollTo(0,0);
 }
 
 function renderMatches(){
@@ -1075,6 +1119,7 @@ function renderMatches(){
   const data=allMatches[div]||[];
   const rv=document.getElementById('m-round').value;
   const sv=document.getElementById('m-status').value;
+  if(yr) roundPick[`${yr}-${div}`]=rv;
   let filtered=[...data];
   if(rv!=='all'){const[l,r]=rv.split('-').map(Number);filtered=filtered.filter(m=>m.leg===l&&m.round===r);}
   if(sv==='pending')filtered=filtered.filter(m=>!m.played);
@@ -1086,35 +1131,136 @@ function renderMatches(){
   let html = isManual ? buildManualAddFormHtml(div) : '';
 
   if(!keys.length){
-    html += `<div class="loading">${isManual?'まだ試合がありません。上のフォームから追加してください':'該当なし'}</div>`;
+    html += `<div class="loading">${isManual&&!data.length?'まだ試合がありません。上のフォームから追加してください':'該当する試合はありません'}</div>`;
     document.getElementById('matches-area').innerHTML=html;
     return;
   }
   keys.forEach(k=>{
     const[l,r]=k.split('-').map(Number);
     const cr = getContinuousRound(data, l, r);
-    html+=`<div class="rlbl">第${cr}節</div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
+    const all = data.filter(m=>m.leg===l&&m.round===r);
+    html+=`<div class="rlbl" style="display:flex;justify-content:space-between;"><span>第${cr}節</span><span id="rcount-${div}-${k}">入力 ${all.filter(m=>m.played).length}/${all.length}</span></div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
     groups[k].forEach(m=>{
       const hs=m.home_score!==null?m.home_score:'',as_=m.away_score!==null?m.away_score:'';
-      html+=`<div class="mcard ${m.played?'is-played':''}">
-        ${isManual?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:-4px;"><button class="sbtn" style="border-color:#ffcdd2;color:var(--red);padding:2px 8px;font-size:10px;" onclick="deleteManualMatch('${yr}',${div},${m.id})">🗑 削除</button></div>`:''}
-        <div class="mteam home">${m.home}</div>
+      const hw=m.played&&m.home_score>m.away_score, aw=m.played&&m.away_score>m.home_score;
+      html+=`<div class="mcard ${m.played?'is-played':''}" id="mc-${div}-${m.id}" data-rk="${k}">
+        ${isManual?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:-4px;"><button class="sbtn" style="border-color:var(--red);color:var(--red);padding:2px 8px;font-size:10px;" onclick="deleteManualMatch('${yr}',${div},${m.id})">🗑 削除</button></div>`:''}
+        <div class="mteam home ${hw?'win':''}">${m.home}</div>
         <div class="mcenter">
           <div class="srow">
-            <input class="sinp" type="number" min="0" max="99" value="${hs}" placeholder="-" id="hs-${div}-${m.id}">
+            <input class="sinp" type="number" inputmode="numeric" enterkeyhint="next" min="0" max="99" value="${hs}" placeholder="-" id="hs-${div}-${m.id}"
+              onfocus="this.select()" onkeydown="scoreKey(event,this)" onchange="autoSaveMatch('${yr}',${div},${m.id})">
             <span class="ssep">:</span>
-            <input class="sinp" type="number" min="0" max="99" value="${as_}" placeholder="-" id="as-${div}-${m.id}">
+            <input class="sinp" type="number" inputmode="numeric" enterkeyhint="next" min="0" max="99" value="${as_}" placeholder="-" id="as-${div}-${m.id}"
+              onfocus="this.select()" onkeydown="scoreKey(event,this)" onchange="autoSaveMatch('${yr}',${div},${m.id})">
           </div>
           <button class="sbtn ${m.played?'saved':''}" id="sb-${div}-${m.id}" onclick="saveMatch('${yr}',${div},${m.id})">
             ${m.played?'✓ 保存済':'保存'}
           </button>
         </div>
-        <div class="mteam">${m.away}</div>
+        <div class="mteam away ${aw?'win':''}">${m.away}</div>
       </div>`;
     });
     html+=`</div>`;
   });
+  html+=`<p style="font-size:11px;color:var(--muted);padding:10px 13px 16px;line-height:1.7;">
+    両チームの得点を入れると自動で保存されます。キーボードの「次へ」で次の入力欄へ移動します。<br>
+    両方を空にすると、その試合の結果を取り消せます。</p>`;
   document.getElementById('matches-area').innerHTML=html;
+}
+
+// 画面下に短いお知らせを出す（alertと違って操作を止めない）
+let _toastTimer = null;
+function toast(msg, isErr){
+  let el=document.getElementById('toast');
+  if(!el){ el=document.createElement('div'); el.id='toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
+  el.textContent=msg;
+  el.className = 'show' + (isErr?' err':'');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>{ el.className=''; }, 2400);
+}
+
+// Enter／「次へ」で次の得点欄へ進む
+function scoreKey(ev, el){
+  if(ev.key!=='Enter') return;
+  ev.preventDefault();
+  const all=[...document.querySelectorAll('#matches-area .sinp')];
+  const i=all.indexOf(el);
+  if(i>=0 && i<all.length-1) all[i+1].focus(); else el.blur();
+}
+
+// 入力欄を読む：{hs,as}＝両方入力済み、'empty'＝両方空、'half'＝片方だけ、'bad'＝不正な値
+function readMatchInputs(div,id){
+  const a=(document.getElementById(`hs-${div}-${id}`)?.value??'').trim();
+  const b=(document.getElementById(`as-${div}-${id}`)?.value??'').trim();
+  if(a===''&&b==='') return 'empty';
+  if(a===''||b==='') return 'half';
+  const hs=parseInt(a,10), as_=parseInt(b,10);
+  if(isNaN(hs)||isNaN(as_)||hs<0||as_<0||hs>99||as_>99) return 'bad';
+  return {hs, as:as_};
+}
+
+// 得点欄を変更したとき：両方そろっていれば保存、両方空なら取り消し、片方だけならもう一方の入力を待つ
+function autoSaveMatch(yr,div,id){
+  const v=readMatchInputs(div,id);
+  if(v==='half') return;
+  if(v==='bad'){ toast('スコアは0〜99の数字で入力してください', true); return; }
+  commitMatch(yr,div,id,v);
+}
+
+// 「保存」ボタンを押したとき
+function saveMatch(yr,div,id){
+  const v=readMatchInputs(div,id);
+  if(v==='half'||v==='bad'){ toast('両チームのスコアを数字で入力してください', true); return; }
+  commitMatch(yr,div,id,v);
+}
+
+function commitMatch(yr,div,id,v){
+  const d=getDivData(yr,div);
+  const m=d?.matches?.find(x=>x.id===id);
+  if(!m)return;
+  if(v==='empty' && !m.played) return;                                   // もともと未入力なら何もしない
+  if(v!=='empty' && m.played && m.home_score===v.hs && m.away_score===v.as) return; // 変更なし
+
+  // 保存に失敗したときに備えて、元の値を控えておく
+  const before = {home_score:m.home_score, away_score:m.away_score, played:m.played, playedAt:m.playedAt};
+  const seqBefore = db._seq;
+  if(v==='empty'){
+    m.home_score=null; m.away_score=null; m.played=false; delete m.playedAt;
+  } else {
+    m.home_score=v.hs; m.away_score=v.as; m.played=true;
+    // 初めて結果が入ったときだけ保存順を記録する（スコアの訂正では試合の時系列を動かさない）
+    if(!before.played || before.playedAt===undefined) m.playedAt = db._seq++;
+  }
+  if(!save(db)){
+    // 書き込めなかった場合は画面と実データの食い違いを防ぐため元に戻す
+    Object.assign(m, before);
+    if(before.playedAt===undefined) delete m.playedAt;
+    db._seq = seqBefore;
+    return;
+  }
+  invalidateEloCache();
+  allMatches[div]=d.matches;
+
+  // 一覧を描き直さず、このカードだけ表示を更新する（入力中のフォーカスやスクロール位置を保つ）
+  const card=document.getElementById(`mc-${div}-${id}`);
+  const btn=document.getElementById(`sb-${div}-${id}`);
+  if(btn){ btn.textContent = m.played?'✓ 保存済':'保存'; btn.classList.toggle('saved', m.played); }
+  if(card){
+    card.classList.toggle('is-played', m.played);
+    card.querySelector('.mteam.home')?.classList.toggle('win', m.played && m.home_score>m.away_score);
+    card.querySelector('.mteam.away')?.classList.toggle('win', m.played && m.away_score>m.home_score);
+    const rk=card.dataset.rk, cnt=document.getElementById(`rcount-${div}-${rk}`);
+    if(cnt){
+      const [l,r]=rk.split('-').map(Number);
+      const all=d.matches.filter(x=>x.leg===l&&x.round===r);
+      const done=all.filter(x=>x.played).length;
+      cnt.textContent=`入力 ${done}/${all.length}`;
+      if(m.played && done===all.length && before.played===false) toast(`第${getContinuousRound(d.matches,l,r)}節の入力が完了しました`);
+    }
+  }
+  if(v==='empty') toast('結果を取り消しました');
+  loadStandings();
 }
 
 // 手動モード用：単発追加フォーム＋一括貼り付けフォームのHTML
@@ -1142,9 +1288,9 @@ function buildManualAddFormHtml(div){
         </div>
         <div class="row" style="margin-bottom:10px;align-items:center;">
           <label style="font-size:11px;color:var(--muted);white-space:nowrap;">結果（任意）：</label>
-          <input type="number" id="ma-hs" min="0" placeholder="-" style="width:50px;">
+          <input type="number" inputmode="numeric" id="ma-hs" min="0" placeholder="-" style="width:50px;">
           <span style="color:var(--muted);">:</span>
-          <input type="number" id="ma-as" min="0" placeholder="-" style="width:50px;">
+          <input type="number" inputmode="numeric" id="ma-as" min="0" placeholder="-" style="width:50px;">
         </div>
         <button class="btn btn-g btn-sm btn-full" onclick="addManualMatch('${div}')">✚ 追加</button>
 
@@ -1265,29 +1411,6 @@ function deleteManualMatch(yr, div, id){
   loadStandings();
 }
 
-function saveMatch(yr,div,id){
-  const hs=parseInt(document.getElementById(`hs-${div}-${id}`).value);
-  const as_=parseInt(document.getElementById(`as-${div}-${id}`).value);
-  if(isNaN(hs)||isNaN(as_)||hs<0||as_<0){alert('スコアを正しく入力してください');return;}
-  const m=getDivData(yr,div)?.matches?.find(x=>x.id===id);
-  if(!m)return;
-
-  // 保存に失敗したときに備えて、元の値を控えておく
-  const before = {home_score:m.home_score, away_score:m.away_score, played:m.played, playedAt:m.playedAt};
-  m.home_score=hs;m.away_score=as_;m.played=true;
-  m.playedAt = db._seq++; // 保存順を記録（ELO計算の時系列判定に使用）
-
-  if(!save(db)){
-    // 書き込めなかった場合は画面と実データの食い違いを防ぐため元に戻す
-    Object.assign(m, before);
-    db._seq--;
-    return;
-  }
-  invalidateEloCache();
-  const btn=document.getElementById(`sb-${div}-${id}`);
-  if(btn){btn.textContent='✓ 保存済';btn.classList.add('saved');}
-  allMatches[div]=[...(getDivData(yr,div)?.matches||[])];
-}
 
 // ══ 5. 設定：自動昇降格＋シーズン一括開始 ══
 const AUTO_PROMOTE_N = 2;   // 自動昇格枠（1〜2位）
@@ -1919,7 +2042,7 @@ function buildH2HSelects(){
 function showH2H(){
   const a=document.getElementById('h2h-a').value;
   const b=document.getElementById('h2h-b').value;
-  if(!a||!b||a===b){alert('異なるチームを選択してください');return;}
+  if(!a||!b||a===b){toast('異なる2チームを選んでください', true);return;}
   let wA=0,wB=0,draws=0,gfA=0,gfB=0;const hist=[];
   Object.entries(db.seasons).sort((x,y)=>parseInt(y[0])-parseInt(x[0])).forEach(([yr,s])=>{
     Object.entries(s.divisions||{}).forEach(([dv,d])=>{
@@ -3221,11 +3344,11 @@ function renderPlayoff(){
         html+=`<div class="card"><div class="po-match">
           <div class="po-team ${aW?'winner':m.played?'loser':''}">
             <span>${m.teamA||'未定'}</span>
-            ${m.teamA?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="psa-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
+            ${m.teamA?`<input class="po-sinp" type="number" inputmode="numeric" onfocus="this.select()" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="psa-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
           </div>
           <div class="po-team ${bW?'winner':m.played?'loser':''}">
             <span>${m.teamB||'未定'}</span>
-            ${m.teamB?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="psb-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
+            ${m.teamB?`<input class="po-sinp" type="number" inputmode="numeric" onfocus="this.select()" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="psb-${m.id}" onchange="savePO('${yr}',${div},${m.id})">`:''}
           </div>
         </div></div>`;
       });
@@ -3277,7 +3400,7 @@ function savePO(yr,div,id){
   const sa=parseInt(document.getElementById(`psa-${id}`)?.value);
   const sb=parseInt(document.getElementById(`psb-${id}`)?.value);
   if(isNaN(sa)||isNaN(sb))return;
-  if(sa===sb){alert('POは引き分けなし');return;}
+  if(sa===sb){toast('プレーオフは引き分けなしで入力してください', true);return;}
   const d=getDivData(yr,div);if(!d)return;
   const m=d.playoff.matches.find(x=>x.id===id);if(!m)return;
   m.scoreA=sa;m.scoreB=sb;m.played=true;
@@ -3591,7 +3714,7 @@ function saveCupMatch(yr, slot, id){
   const sa=parseInt(document.getElementById(`csa-${slot}-${id}`)?.value);
   const sb=parseInt(document.getElementById(`csb-${slot}-${id}`)?.value);
   if(isNaN(sa)||isNaN(sb))return;
-  if(sa===sb){alert('カップ戦は引き分けなし（PK等で決着した想定でスコアを入力してください）');return;}
+  if(sa===sb){toast('カップ戦は引き分けなし。PK等で決着した想定のスコアを入れてください', true);return;}
   const cup=getCup(yr, slot); if(!cup) return;
   const m=cup.matches.find(x=>x.id===id); if(!m) return;
   m.scoreA=sa; m.scoreB=sb; m.played=true;
@@ -3757,11 +3880,11 @@ function renderCup(){
       html += `<div class="card"><div class="po-match">
         <div class="po-team ${aW?'winner':m.played?'loser':''}">
           ${teamLabel(m.teamA, m.divA, m.seedA, aIsBye)}
-          ${m.teamA && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
+          ${m.teamA && !m.walkover?`<input class="po-sinp" type="number" inputmode="numeric" onfocus="this.select()" min="0" max="99" value="${m.scoreA!==null?m.scoreA:''}" placeholder="-" id="csa-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
         </div>
         <div class="po-team ${bW?'winner':m.played?'loser':''}">
           ${teamLabel(m.teamB, m.divB, m.seedB, bIsBye)}
-          ${m.teamB && !m.walkover?`<input class="po-sinp" type="number" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
+          ${m.teamB && !m.walkover?`<input class="po-sinp" type="number" inputmode="numeric" onfocus="this.select()" min="0" max="99" value="${m.scoreB!==null?m.scoreB:''}" placeholder="-" id="csb-${slot}-${m.id}" onchange="saveCupMatch('${yr}',${slot},${m.id})">`:''}
         </div>
       </div></div>`;
     });
@@ -4829,7 +4952,7 @@ function runPrediction(){
   const yr = document.getElementById('pr-yr').value;
   const div = curDiv.predict;
   const el = document.getElementById('predict-area');
-  if(!yr){ alert('シーズンを選択してください'); return; }
+  if(!yr){ toast('シーズンを選択してください', true); return; }
 
   el.innerHTML = `<div class="loading loading-active">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
 
