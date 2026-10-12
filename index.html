@@ -236,6 +236,17 @@ canvas{display:block;max-width:100%;}
 .bnav{height:calc(58px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);}
 body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 @media (prefers-reduced-motion: reduce){#toast{transition:none;}}
+
+/* ── 追加修正分 ── */
+.stbl-detail{table-layout:fixed;}
+.stbl-detail th:nth-child(1){width:44px;}
+.stbl-detail th:nth-child(n+3):nth-child(-n+8){width:calc(2ch + 12px);}   /* 試・勝・分・敗・得・失：2桁ぶん */
+.stbl-detail th:nth-child(9){width:calc(3ch + 10px);}                      /* 差：符号＋2桁 */
+.stbl-detail th:nth-child(10){width:calc(3ch + 12px);}                     /* 勝点 */
+.stbl-detail td.tl{max-width:none;}
+.heatmap-tbl th.hm-pts,.heatmap-tbl td.hm-pts{width:28px;min-width:28px;max-width:28px;font-size:10px;font-weight:700;background:var(--surface-alt);color:var(--text);font-variant-numeric:tabular-nums;}
+.heatmap-tbl th.hm-pts{color:var(--muted);font-size:9px;}
+.heatmap-tbl .hm-pts-last{border-right:2px solid var(--border);}
 </style>
 </head>
 <body>
@@ -260,13 +271,18 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <div class="page" id="pg-matches">
   <div class="phdr">
     <div class="ptitle">🏆 リーグ</div>
-    <div style="display:flex;gap:6px;margin-top:7px;align-items:center;">
-      <button class="rstep" onclick="stepRound(-1)" aria-label="前の節">◀</button>
-      <select id="m-round" style="font-size:13px;padding:6px 8px;flex:1;min-width:0;" onchange="renderMatches()"><option value="all">全節</option></select>
-      <button class="rstep" onclick="stepRound(1)" aria-label="次の節">▶</button>
-      <select id="m-status" style="font-size:13px;padding:6px 8px;flex:0 0 auto;width:auto;" onchange="renderMatches()">
-        <option value="all">全試合</option><option value="pending">未入力</option><option value="done">入力済</option>
-      </select>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:7px;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="rstep" onclick="stepRound(-1)" aria-label="前の節">◀</button>
+        <select id="m-round" style="font-size:13px;padding:6px 8px;flex:1;min-width:0;" onchange="renderMatches()" aria-label="節"><option value="all">全節</option></select>
+        <button class="rstep" onclick="stepRound(1)" aria-label="次の節">▶</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="m-team" style="font-size:13px;padding:6px 8px;flex:1;min-width:0;" onchange="onTeamFilterChange()" aria-label="チームで絞り込み"><option value="">全チーム</option></select>
+        <select id="m-status" style="font-size:13px;padding:6px 8px;flex:0 0 auto;width:auto;" onchange="renderMatches()" aria-label="入力状況">
+          <option value="all">全試合</option><option value="pending">未入力</option><option value="done">入力済</option>
+        </select>
+      </div>
     </div>
   </div>
   <div class="tabs" id="dtabs-matches"></div>
@@ -490,13 +506,13 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
   <div class="tabs" id="dtabs-predict"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="pr-subtab-elo" onclick="switchPredictSubtab('elo')">📈 ELO</div>
+    <div class="tab active" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">🔥 ヒートマップ</div>
+    <div class="tab" id="pr-subtab-elo" onclick="switchPredictSubtab('elo')">📈 ELO</div>
     <div class="tab" id="pr-subtab-ad" onclick="switchPredictSubtab('ad')">⚔️ 攻守力</div>
-    <div class="tab" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">🔥 ヒートマップ</div>
   </div>
-  <div id="predict-area"></div>
+  <div id="predict-area" style="display:none;"></div>
   <div id="ad-area" style="display:none;"></div>
-  <div id="heatmap-area" style="display:none;"></div>
+  <div id="heatmap-area"></div>
 </div>
 
 <!-- ボトムナビ -->
@@ -759,7 +775,7 @@ function init(){
   const yr = new Date().getFullYear();
   refreshSeasonSelects();
   buildDivTabs('dtabs-home', 1, d=>{ curDiv.home=d; loadStandings(); });
-  buildDivTabs('dtabs-matches', 1, d=>{ curDiv.matches=d; curDiv.po=d; loadMatches(); renderPlayoff(); });
+  buildDivTabs('dtabs-matches', 1, d=>{ curDiv.matches=d; curDiv.po=d; loadMatches(); renderPlayoff(); if(leagueSubtab==='forecast') renderNextRoundForecast(); });
   buildDivTabs('dtabs-predict', 1, d=>{ curDiv.predict=d; renderPredictPage(); });
   renderTeamEditor();
   buildDivNameForm();
@@ -1017,7 +1033,7 @@ function loadStandings(){
     </p>`;
   } else {
     // ── 詳細表示モード ──
-    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
+    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact stbl-detail"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
     rows.forEach((r,i)=>{
       const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
       const gd = r.gd>0?'+'+r.gd:r.gd;
@@ -1065,6 +1081,17 @@ function getContinuousRound(matches, leg, round){
 
 // ══ 4. 試合入力（リーグ） ══
 let roundPick = {}; // 「年度-部門」ごとに、最後に見ていた節を覚えておく
+let teamPick = {};  // 「年度-部門」ごとに、絞り込んでいるチームを覚えておく
+
+// チームを選んだら全節を通して表示し、解除したら入力中の節に戻す
+function onTeamFilterChange(){
+  const team=document.getElementById('m-team').value;
+  const sel=document.getElementById('m-round');
+  if(team) sel.value='all';
+  else { const k=defaultRoundKey(allMatches[curDiv.matches]||[]); sel.value=k; if(sel.value!==k) sel.value='all'; }
+  renderMatches();
+  window.scrollTo(0,0);
+}
 
 // 初期表示する節：未入力の試合が残っている最初の節（全部入力済みなら最終節）
 function defaultRoundKey(matches){
@@ -1092,6 +1119,12 @@ function loadMatches(){
     const cr = getContinuousRound(matches, l, r);
     return `<option value="${k}">第${cr}節</option>`;
   }).join('');
+  // チーム絞り込みの選択肢（その部門のチーム。選んでいたチームがいれば維持）
+  const tsel=document.getElementById('m-team');
+  const teamNames=[...(d?.teams||[])].sort((a,b)=>a.localeCompare(b,'ja'));
+  const keepTeam = teamPick[`${yr}-${div}`];
+  tsel.innerHTML='<option value="">全チーム</option>'+teamNames.map(t=>`<option value="${t}">${t}</option>`).join('');
+  tsel.value = teamNames.includes(keepTeam) ? keepTeam : '';
   const remembered = roundPick[`${yr}-${div}`];
   const want = (remembered==='all' || rounds.includes(remembered)) ? remembered : defaultRoundKey(matches);
   sel.value = want; if(sel.value!==want) sel.value='all';
@@ -1119,8 +1152,10 @@ function renderMatches(){
   const data=allMatches[div]||[];
   const rv=document.getElementById('m-round').value;
   const sv=document.getElementById('m-status').value;
-  if(yr) roundPick[`${yr}-${div}`]=rv;
+  const tv=document.getElementById('m-team').value;
+  if(yr){ roundPick[`${yr}-${div}`]=rv; teamPick[`${yr}-${div}`]=tv; }
   let filtered=[...data];
+  if(tv) filtered=filtered.filter(m=>m.home===tv||m.away===tv);
   if(rv!=='all'){const[l,r]=rv.split('-').map(Number);filtered=filtered.filter(m=>m.leg===l&&m.round===r);}
   if(sv==='pending')filtered=filtered.filter(m=>!m.played);
   if(sv==='done')filtered=filtered.filter(m=>m.played);
@@ -1630,7 +1665,7 @@ function saveDivName(div){
   save(db);
   alert('保存しました');
   buildDivTabs('dtabs-home',curDiv.home,d=>{curDiv.home=d;loadStandings();});
-  buildDivTabs('dtabs-matches',curDiv.matches,d=>{curDiv.matches=d;loadMatches();});
+  buildDivTabs('dtabs-matches',curDiv.matches,d=>{curDiv.matches=d;curDiv.po=d;loadMatches();renderPlayoff();if(leagueSubtab==='forecast')renderNextRoundForecast();});
   renderTeamEditor();
 }
 
@@ -4618,7 +4653,7 @@ function predictStandings(yr, div, simulations=20000){
     // 残り試合なし = 確定順位
     const rows = calcStandings(yr,div);
     const n = rows.length;
-    return rows.map(r=>({...r, avgRank:r.rank,
+    return rows.map(r=>({...r, avgRank:r.rank, avgPts:r.pts, currentPts:r.pts,
       promoteProb: null,
       playoffProb: div>1 ? (r.rank <= AUTO_PROMOTE_N + (d.playoff?.playoffN||4) ? 100 : 0) : null,
       relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null,
@@ -4699,6 +4734,8 @@ function predictStandings(yr, div, simulations=20000){
 
   const rankCounts = {}; // team -> [0,0,0,...] count per rank
   teams.forEach(t=>rankCounts[t]=new Array(teams.length).fill(0));
+  const ptsSum = {}; // team -> 各試行の最終勝点の合計（平均勝点の算出用）
+  teams.forEach(t=>ptsSum[t]=0);
 
   for(let s=0; s<simulations; s++){
     const stats = {};
@@ -4715,6 +4752,7 @@ function predictStandings(yr, div, simulations=20000){
     }
     const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
     ranked.forEach((t,i)=>rankCounts[t][i]++);
+    for(let ti=0; ti<teams.length; ti++) ptsSum[teams[ti]] += stats[teams[ti]].pts;
   }
 
   const n = teams.length;
@@ -4744,6 +4782,7 @@ function predictStandings(yr, div, simulations=20000){
       winProb: div===1 ? Math.round(winCount/simulations*100) : null,
       best8Prob: div===1 ? Math.round(best8Count/simulations*100) : null,
       currentPts: baseStats[t].pts,
+      avgPts: ptsSum[t]/simulations, // 予想される最終勝点（試行の平均）
       elo: Math.round(getR(t)),
       rankDist: counts.map(c=>Math.round(c/simulations*1000)/10), // 各順位になる確率（%、小数1桁）
     };
@@ -4757,12 +4796,42 @@ function predictStandings(yr, div, simulations=20000){
 // 15. 予測タブ：ELO表示／ヒートマップ
 // ══════════════════════════════════
 let predictCache = {}; // key: `${yr}-${div}` -> pred結果
+let preseasonCache = {}; // key: `${yr}-${div}` -> {チーム名: シーズン当初の予想勝点}
+let _predRunning = false;
+
+// シーズン当初の予想勝点を求める。
+// 「このシーズンの結果がまだ1試合も入っていない状態」を一時的に再現し（以降のシーズンとこの年のカップ戦も除く）、
+// 通常の予測と同じモデルで全試合をシミュレーションして、最終勝点の平均を取る。
+function predictPreseason(yr, div, simulations=10000){
+  yr = String(yr);
+  const real = db;
+  const order = getSeasonOrder(yr);
+  const later = Object.keys(real.seasons).filter(y=>y!==yr && getSeasonOrder(y)>order);
+  const clone = JSON.parse(JSON.stringify(real));
+  later.forEach(y=>{ delete clone.seasons[y]; if(clone.cups) delete clone.cups[y]; });
+  if(clone.cups) delete clone.cups[yr];
+  Object.values(clone.seasons[yr]?.divisions||{}).forEach(dd=>{
+    (dd.matches||[]).forEach(m=>{ m.home_score=null; m.away_score=null; m.played=false; delete m.playedAt; });
+  });
+  const out = {};
+  db = clone;
+  invalidateEloCache();
+  try{
+    predictStandings(yr, div, simulations).forEach(r=>{ out[r.team] = r.avgPts; });
+  } finally {
+    db = real;
+    invalidateEloCache();
+  }
+  return out;
+}
 
 function predictCacheKey(yr, div){ return `${yr}-${div}`; }
 
 // ページを開いた時・タブ/年度切替時に呼ぶ（再計算はしない）
 // 予測タブ内の「予測 / ヒートマップ / 精度検証」切り替え
+let predictSubtab = 'heatmap'; // 予測タブで開いている表示（最初はヒートマップ）
 function switchPredictSubtab(tab){
+  predictSubtab = tab;
   document.getElementById('pr-subtab-elo').classList.toggle('active', tab==='elo');
   document.getElementById('pr-subtab-ad').classList.toggle('active', tab==='ad');
   document.getElementById('pr-subtab-heatmap').classList.toggle('active', tab==='heatmap');
@@ -4881,11 +4950,7 @@ function renderHeatmap(){
 
   const key = predictCacheKey(yr, div);
   const pred = predictCache[key];
-  if(!pred){
-    el.innerHTML = `<div class="loading">まだ予測が実行されていません<br>
-      <span style="font-size:11px;">上の「🔄 予測を更新」ボタンを押してください</span></div>`;
-    return;
-  }
+  if(!pred){ runPrediction(); return; }
 
   // 現在の実際の順位順に並べ替え（予測順ではなく現在順位順で表示）
   const currentStandings = calcStandings(yr, div);
@@ -4901,13 +4966,22 @@ function renderHeatmap(){
   html += `<div class="card"><div class="tbl-scroll"><table class="heatmap-tbl">`;
 
   // ヘッダー行（順位）
-  html += `<tr><th class="heatmap-corner"></th>`;
+  const pre = preseasonCache[key] || {};
+  html += `<tr><th class="heatmap-corner"></th><th class="hm-pts" title="シーズン当初の予想勝点">当初</th><th class="hm-pts" title="現在の予想勝点">現在</th><th class="hm-pts hm-pts-last" title="現在 − 当初">差</th>`;
   for(let r=1;r<=n;r++) html += `<th>${r}</th>`;
   html += `</tr>`;
 
   // 各チームの行（現在の実際の順位順に並べる）
   predByCurrentOrder.forEach(row=>{
     html += `<tr><th class="heatmap-team">${row.team}</th>`;
+    {
+      const cur = row.avgPts!==undefined ? Math.round(row.avgPts) : null;
+      const p0 = pre[row.team]!==undefined ? Math.round(pre[row.team]) : null;
+      const diff = (cur!==null && p0!==null) ? cur-p0 : null;
+      const dCol = diff===null||diff===0 ? 'var(--muted)' : diff>0 ? 'var(--g)' : 'var(--red)';
+      html += `<td class="hm-pts">${p0!==null?p0:'—'}</td><td class="hm-pts">${cur!==null?cur:'—'}</td>`
+            + `<td class="hm-pts hm-pts-last" style="color:${dCol};">${diff===null?'—':diff>0?'+'+diff:diff}</td>`;
+    }
     const dist = row.rankDist || [];
     const b = rankBounds[row.team] || {best:1, worst:n};
     for(let i=0;i<n;i++){
@@ -4934,6 +5008,7 @@ function renderHeatmap(){
   html += `</table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
     ※ 縦＝チーム（現在の順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
+    ※ <b>当初</b>＝シーズン開幕時点の戦力で全試合をシミュレーションしたときの平均勝点、<b>現在</b>＝ここまでの結果＋残り試合のシミュレーションの平均勝点、<b>差</b>＝現在−当初（プラスなら開幕時の見立てより好調）。<br>
     <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝到達不可能（確定的に無理）<br>
     <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,rgba(${baseColor},0.22),rgba(${baseColor},0.22) 2px,rgba(${baseColor},0.06) 2px,rgba(${baseColor},0.06) 4px);vertical-align:middle;margin-right:4px;"></span>薄い網掛け＝理論上は到達しうるが、今回の試行では0%だった順位</p>`;
 
@@ -4943,8 +5018,11 @@ function renderHeatmap(){
 function renderPredictPage(){
   const yr = document.getElementById('pr-yr').value;
   const el = document.getElementById('predict-area');
-  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; document.getElementById('heatmap-area').innerHTML=el.innerHTML; return; }
   el.innerHTML = buildEloTableHtml();
+  // 開いている表示も、選んでいる部門・シーズンに合わせて描き直す
+  if(predictSubtab==='heatmap') renderHeatmap();
+  if(predictSubtab==='ad') renderAttackDefenseRanking();
 }
 
 // 更新ボタン押下時：実際にシミュレーションを実行（ヒートマップ用にキャッシュする。ELO表示自体はすぐ見られる）
@@ -4954,16 +5032,23 @@ function runPrediction(){
   const el = document.getElementById('predict-area');
   if(!yr){ toast('シーズンを選択してください', true); return; }
 
-  el.innerHTML = `<div class="loading loading-active">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
+  if(_predRunning) return; // 実行中の二重起動を防ぐ
+  _predRunning = true;
+  const loadingHtml = `<div class="loading loading-active">🎲 シミュレーション実行中（2万回試行）…<br><span style="font-size:11px;">少しお待ちください</span></div>`;
+  el.innerHTML = loadingHtml;
+  document.getElementById('heatmap-area').innerHTML = loadingHtml;
 
   // 描画を先に反映させてから重い処理を実行
   setTimeout(()=>{
-    const pred = predictStandings(yr, div, 20000);
-    const key = predictCacheKey(yr, div);
-    predictCache[key] = pred;
+    try{
+      const key = predictCacheKey(yr, div);
+      predictCache[key] = predictStandings(yr, div, 20000);
+      // シーズン当初の予想勝点（開幕時点の戦力で全試合をシミュレーション）。結果を入力しても変わらないので一度だけ計算する
+      if(!preseasonCache[key]) preseasonCache[key] = predictPreseason(yr, div, 10000);
+    } finally { _predRunning = false; }
     el.innerHTML = buildEloTableHtml();
-    // ヒートマップを開いている最中に更新した場合は再描画
-    if(document.getElementById('pr-subtab-heatmap').classList.contains('active')) renderHeatmap();
+    // 計算中に部門やシーズンを切り替えていた場合も、いま開いている内容で描き直す
+    if(predictSubtab==='heatmap') renderHeatmap();
   }, 50);
 }
 
