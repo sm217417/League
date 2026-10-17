@@ -247,7 +247,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 .heatmap-tbl th.hm-pts,.heatmap-tbl td.hm-pts{width:28px;min-width:28px;max-width:28px;font-size:10px;font-weight:700;background:var(--surface-alt);color:var(--text);font-variant-numeric:tabular-nums;}
 .heatmap-tbl th.hm-pts{color:var(--muted);font-size:9px;}
 .heatmap-tbl .hm-pts-last{border-right:2px solid var(--border);}
-.heatmap-tbl th.hm-range,.heatmap-tbl td.hm-range{width:46px;min-width:46px;max-width:46px;font-size:9px;font-weight:400;color:var(--muted);}
+.heatmap-tbl th.hm-range,.heatmap-tbl td.hm-range{width:52px;min-width:52px;max-width:52px;font-size:9px;font-weight:400;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -4578,13 +4578,17 @@ function withPreseasonDb(yr, fn){
   yr = String(yr);
   const real = db;
   const order = getSeasonOrder(yr);
-  const clone = JSON.parse(JSON.stringify(real));
-  Object.keys(real.seasons).filter(y=>y!==yr && getSeasonOrder(y)>order)
-    .forEach(y=>{ delete clone.seasons[y]; if(clone.cups) delete clone.cups[y]; });
-  if(clone.cups) delete clone.cups[yr];
-  Object.values(clone.seasons[yr]?.divisions||{}).forEach(dd=>{
-    (dd.matches||[]).forEach(m=>{ m.home_score=null; m.away_score=null; m.played=false; delete m.playedAt; });
+  const clone = Object.assign({}, real, { seasons:{}, cups:{} });
+  Object.keys(real.seasons).forEach(y=>{
+    if(y===yr){
+      const divs={};
+      Object.entries(real.seasons[y].divisions||{}).forEach(([k,dd])=>{
+        divs[k] = Object.assign({}, dd, { matches:(dd.matches||[]).map(m=>{ const c=Object.assign({}, m, {home_score:null, away_score:null, played:false}); delete c.playedAt; return c; }) });
+      });
+      clone.seasons[y] = Object.assign({}, real.seasons[y], { divisions:divs });
+    } else if(getSeasonOrder(y)<order) clone.seasons[y] = real.seasons[y];
   });
+  Object.keys(real.cups||{}).forEach(y=>{ if(y!==yr && getSeasonOrder(y)<order) clone.cups[y]=real.cups[y]; });
   db = clone;
   invalidateEloCache();
   try{ return fn(); }
@@ -4597,9 +4601,14 @@ function isDivFinished(yr,div){ const d=getDivData(yr,div); return !!d && d.matc
 function expectedPtsFromLambdas(info){
   const pts={};
   info.teams.forEach(t=>pts[t]=info.baseStats[t].pts);
+  const ph=new Float64Array(11), pa=new Float64Array(11);
   info.matchLambdas.forEach(({home,away,lamH,lamA})=>{
-    const pr=computeMatchProbabilities(lamH,lamA,9);
-    pts[home]+=3*pr.pH+pr.pD; pts[away]+=3*pr.pA+pr.pD;
+    ph[0]=Math.exp(-lamH); pa[0]=Math.exp(-lamA);
+    for(let k=1;k<=10;k++){ ph[k]=ph[k-1]*lamH/k; pa[k]=pa[k-1]*lamA/k; }
+    let pH=0,pD=0,pA=0;
+    for(let h=0;h<=10;h++) for(let a=0;a<=10;a++){ const p=ph[h]*pa[a]; if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p; }
+    const t=pH+pD+pA;
+    pts[home]+=(3*pH+pD)/t; pts[away]+=(3*pA+pD)/t;
   });
   return pts;
 }
@@ -4618,9 +4627,11 @@ function calibSignature(){
 function calibrateStrength(){
   const sig = calibSignature();
   if(calib && calib.sig===sig){ strengthK = calib.k; return calib; }
+  if(db.predCalib && db.predCalib.sig===sig){ calib = db.predCalib; strengthK = calib.k; return calib; }
   const samples=[];
   const asc = getSeasons().slice().reverse();
   asc.forEach((yr,i)=>{ if(i===0) return; [1,2,3].forEach(div=>{ if(isDivFinished(yr,div)) samples.push({yr,div,actual:Object.fromEntries(calcStandings(yr,div).map(r=>[r.team,r.pts]))}); }); });
+  samples.splice(0, Math.max(0, samples.length-6)); // 直近6件（部門ごとのシーズン）に絞る
   if(!samples.length){ calib={sig,k:STRENGTH_K_DEFAULT,n:0}; strengthK=calib.k; return calib; }
 
   // 設定（強さ係数・部門補正の有無）の組ごとに誤差を出す。シーズンの複製はサンプル1件につき1回で済ませる
@@ -4638,17 +4649,24 @@ function calibrateStrength(){
     return e.map(v=>Math.sqrt(v/Math.max(1,cnt)));
   };
   try{
-    const coarse=[]; for(let k=1.0;k<=3.0001;k+=0.25) coarse.push([k,true]);
-    const v1=evalMany(coarse);
-    const c=coarse[v1.indexOf(Math.min(...v1))][0];
+    const grid=[0.8,1.0,1.25,1.5,1.8,2.2,2.7];
+    const v=evalMany([...grid.map(k=>[k,true]), [1,false]]);
+    const rBefore=v.pop();
+    // 最小の点の前後を放物線でつないで、格子の間の最適値を推定する
+    const i=v.indexOf(Math.min(...v));
+    let best=grid[i];
+    if(i>0 && i<grid.length-1){
+      const [x0,x1,x2]=[grid[i-1],grid[i],grid[i+1]], [y0,y1,y2]=[v[i-1],v[i],v[i+1]];
+      const den=(x0-x1)*(x0-x2)*(x1-x2);
+      const A=(x2*(y1-y0)+x1*(y0-y2)+x0*(y2-y1))/den, B=(x2*x2*(y0-y1)+x1*x1*(y2-y0)+x0*x0*(y1-y2))/den;
+      if(A>0) best=Math.max(x0, Math.min(x2, -B/(2*A)));
+    }
     const n=samples.length;
-    const fine=[]; for(let k=Math.max(0.8,c-0.2);k<=c+0.2001;k+=0.05) fine.push([k,true]);
-    const v2=evalMany(fine);
-    const best=fine[v2.indexOf(Math.min(...v2))][0];
-    // サンプルが少ないうちは既定値に寄せる
     const kFinal=Math.round(((n*best + 2*STRENGTH_K_DEFAULT)/(n+2))*20)/20;
-    const [rFinal, rBefore]=evalMany([[kFinal,true],[1,false]]);
-    calib={ sig, k:kFinal, n, rmse:rFinal, rmseBefore:rBefore };
+    // 誤差の表示用：最終値に一番近い格子点の値を使う（追加の計算をしない）
+    const near=grid.reduce((p,c)=>Math.abs(c-kFinal)<Math.abs(p-kFinal)?c:p);
+    calib={ sig, k:kFinal, n, rmse:v[grid.indexOf(near)], rmseBefore:rBefore };
+    db.predCalib = calib; save(db);
   } finally {
     useDivFactors=true;
   }
@@ -4902,7 +4920,7 @@ function predictStandings(yr, div, simulations=20000, opts){
   teams.forEach(t=>rankCounts[t]=new Array(teams.length).fill(0));
   const ptsSum = {}; // team -> 各試行の最終勝点の合計（平均勝点の算出用）
   const ptsSamples = {}; // team -> 各試行の最終勝点（80%の幅の算出用）
-  teams.forEach(t=>{ ptsSum[t]=0; ptsSamples[t]=new Int16Array(simulations); });
+  teams.forEach(t=>{ ptsSum[t]=0; ptsSamples[t]=new Int32Array(400); });
 
   for(let s=0; s<simulations; s++){
     const stats = {};
@@ -4919,7 +4937,7 @@ function predictStandings(yr, div, simulations=20000, opts){
     }
     const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
     ranked.forEach((t,i)=>rankCounts[t][i]++);
-    for(let ti=0; ti<teams.length; ti++){ const tt=teams[ti]; ptsSum[tt] += stats[tt].pts; ptsSamples[tt][s] = stats[tt].pts; }
+    for(let ti=0; ti<teams.length; ti++){ const tt=teams[ti], v=stats[tt].pts; ptsSum[tt] += v; ptsSamples[tt][Math.min(399,Math.max(0,v))]++; }
   }
 
   const n = teams.length;
@@ -4950,7 +4968,9 @@ function predictStandings(yr, div, simulations=20000, opts){
       best8Prob: div===1 ? Math.round(best8Count/simulations*100) : null,
       currentPts: baseStats[t].pts,
       avgPts: ptsSum[t]/simulations, // 予想される最終勝点（試行の平均）
-      ...(()=>{ const a=Array.from(ptsSamples[t]).sort((x,y)=>x-y); return { ptsLo:a[Math.floor(simulations*0.1)], ptsHi:a[Math.min(simulations-1,Math.floor(simulations*0.9))] }; })(),
+      ...(()=>{ const h=ptsSamples[t]; let c=0, lo=null, hi=0;
+        for(let v=0; v<h.length; v++){ c+=h[v]; if(lo===null && c>simulations*0.1) lo=v; if(c>=simulations*0.9){ hi=v; break; } }
+        return { ptsLo:lo, ptsHi:hi }; })(),
       elo: Math.round(getR(t)),
       rankDist: counts.map(c=>Math.round(c/simulations*1000)/10), // 各順位になる確率（%、小数1桁）
     };
@@ -5133,7 +5153,10 @@ function renderHeatmap(){
 
   // ヘッダー行（順位）
   const pre = preseasonCache[key]?.data || {};
-  html += `<tr><th class="heatmap-corner"></th><th class="hm-pts" title="シーズン当初の予想勝点">当初</th><th class="hm-pts hm-range" title="シーズン当初に80%の確率で収まると見た勝点の幅">当初80%</th><th class="hm-pts" title="現在の予想勝点">現在</th><th class="hm-pts hm-pts-last" title="現在 − 当初">差</th>`;
+  // 開幕前の予想順位（開幕前予測の平均勝点の順）
+  const preRank = {};
+  Object.keys(pre).sort((a,b)=>pre[b].avg-pre[a].avg).forEach((t,i)=>{ preRank[t]=i+1; });
+  html += `<tr><th class="heatmap-corner"></th><th class="hm-pts hm-range" title="開幕前に80%の確率で収まると見た勝点の幅">開幕前予測</th><th class="hm-pts" title="開幕前の予想順位">予</th><th class="hm-pts" title="現在の予想勝点（ここまでの結果＋残り試合）">現予</th><th class="hm-pts hm-pts-last" title="現在の順位">現</th>`;
   for(let r=1;r<=n;r++) html += `<th>${r}</th>`;
   html += `</tr>`;
 
@@ -5143,14 +5166,13 @@ function renderHeatmap(){
     {
       const cur = row.avgPts!==undefined ? Math.round(row.avgPts) : null;
       const pr = pre[row.team];
-      const p0 = pr ? Math.round(pr.avg) : null;
-      const diff = (cur!==null && p0!==null) ? cur-p0 : null;
-      const dCol = diff===null||diff===0 ? 'var(--muted)' : diff>0 ? 'var(--g)' : 'var(--red)';
-      // 現在の予想が当初の80%の幅から外れていたら強調（見立てが大きく外れているチーム）
-      const out = pr && cur!==null && (cur<pr.lo || cur>pr.hi);
-      const outBg = out ? `background:${diff>0?'var(--g2)':'var(--red2)'};` : '';
-      html += `<td class="hm-pts">${p0!==null?p0:'—'}</td><td class="hm-pts hm-range">${pr?`${pr.lo}–${pr.hi}`:'—'}</td><td class="hm-pts">${cur!==null?cur:'—'}</td>`
-            + `<td class="hm-pts hm-pts-last" style="color:${dCol};${outBg}">${diff===null?'—':diff>0?'+'+diff:diff}</td>`;
+      // 現予が開幕前予測の幅から外れていたら色を付ける（上振れ＝緑、下振れ＝赤）
+      const above = pr && cur!==null && cur>pr.hi, below = pr && cur!==null && cur<pr.lo;
+      const curStyle = above ? 'background:var(--g2);color:var(--g);' : below ? 'background:var(--red2);color:var(--red);' : '';
+      const pr0 = preRank[row.team], cr0 = currentRankMap[row.team];
+      const rCol = (pr0 && cr0 && pr0!==cr0) ? (cr0<pr0 ? 'color:var(--g);' : 'color:var(--red);') : '';
+      html += `<td class="hm-pts hm-range">${pr?`${pr.lo}–${pr.hi}`:'—'}</td><td class="hm-pts">${pr0||'—'}</td>`
+            + `<td class="hm-pts" style="${curStyle}">${cur!==null?cur:'—'}</td><td class="hm-pts hm-pts-last" style="${rCol}">${cr0||'—'}</td>`;
     }
     const dist = row.rankDist || [];
     const b = rankBounds[row.team] || {best:1, worst:n};
@@ -5178,7 +5200,8 @@ function renderHeatmap(){
   html += `</table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
     ※ 縦＝チーム（現在の順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
-    ※ <b>当初</b>＝シーズン開幕時点の戦力で全試合をシミュレーションしたときの平均勝点、<b>当初80%</b>＝開幕時点で80%の確率で収まると見た勝点の幅、<b>現在</b>＝ここまでの結果＋残り試合のシミュレーションの平均勝点、<b>差</b>＝現在−当初。差の欄に色が付いているチームは、当初の幅から外れています。<br>
+    ※ <b>開幕前予測</b>＝開幕時点の戦力で全試合をシミュレーションし、80%の確率で収まると見た最終勝点の幅、<b>予</b>＝開幕前の予想順位、<b>現予</b>＝ここまでの結果＋残り試合のシミュレーションによる予想最終勝点、<b>現</b>＝現在の順位。<br>
+    ※ 現予に色が付いているチームは開幕前予測の幅から外れています（緑＝上振れ、赤＝下振れ）。現の色は予想順位より上か下かを表します。<br>
     ※ 平均は運の要素が打ち消されるため、実際の勝点の散らばりより狭くなります。当たり外れは「幅に収まったか」で見てください。<br>
     ${calibNoteHtml()}<br>
     <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝到達不可能（確定的に無理）<br>
@@ -5217,8 +5240,15 @@ function runPrediction(){
       calibrateStrength(); // 強さ係数を過去シーズンで調整（データが変わったときだけ再計算）
       predictCache[key] = predictStandings(yr, div, 20000);
       // シーズン当初の予想勝点（開幕時点の戦力で全試合をシミュレーション）。係数が変わったときだけ計算し直す
-      if(!preseasonCache[key] || preseasonCache[key].k!==strengthK || preseasonCache[key].sig!==calib.sig)
-        preseasonCache[key] = {k:strengthK, sig:calib.sig, data:predictPreseason(yr, div, 10000)};
+      if(!preseasonCache[key] || preseasonCache[key].k!==strengthK || preseasonCache[key].sig!==calib.sig){
+        const saved = db.preseasonStore?.[key];
+        if(saved && saved.k===strengthK && saved.sig===calib.sig) preseasonCache[key] = saved;
+        else {
+          preseasonCache[key] = {k:strengthK, sig:calib.sig, data:predictPreseason(yr, div, 5000)};
+          if(!db.preseasonStore) db.preseasonStore = {};
+          db.preseasonStore[key] = preseasonCache[key]; save(db);
+        }
+      }
     } finally { _predRunning = false; }
     el.innerHTML = buildEloTableHtml();
     // 計算中に部門やシーズンを切り替えていた場合も、いま開いている内容で描き直す
