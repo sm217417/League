@@ -530,24 +530,29 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 /* ════════════════════════════════════════════════════════════
  * WINNER PRO — 目次
  * ────────────────────────────────────────────────────────────
- *  1. DB / 初期化・状態管理
- *  2. ページ切替・部門タブ共通処理
- *  3. 順位計算・順位表（ホーム）
- *  4. 試合生成・試合入力（リーグ）
- *  5. 設定：自動昇降格・シーズン開始
- *  6. 設定：リーグ名／カップ名／チーム編集
- *  7. 設定：CSVエクスポート・シーズン削除
+ *  1. 保存（localStorage／IndexedDB・圧縮）
+ *  2. 状態管理・初期化
+ *  3. ページ切替・部門タブ・データアクセス（部門の色・略称の定数もここ）
+ *  4. 順位計算・順位表（試合結果の集計ヘルパーもここ）
+ *  5. 試合生成・試合入力（リーグ）
+ *  6. 設定：シーズン開始（自動昇降格）・名称・チーム編集
+ *  7. 設定：書き出し・バックアップ・シーズン削除
  *  8. 対戦成績（H2H）
- *  9. 記録タブ：歴代／年度別推移／シーズン内変動／対戦
+ *  9. 記録タブ（歴代・タイトル・連勝・金星・プロフィール・推移）
  * 10. 昇格プレーオフ（PO）
  * 11. カップ戦（複数大会・自動抽選／手動入力）
- * 12. 設定：過去データのフォーム入力
+ * 12. 設定：過去データのフォーム入力・ユーティリティ
  * 13. ELOレーティング計算
- * 14. 予測：チーム傾向・攻撃力守備力（ポアソン予測モデル）
- * 15. 予測タブ：ELO表示／ヒートマップ
- * ════════════════════════════════════════════════════════════ */
+ * 14. 予測モデル（チーム傾向・攻撃力／守備力・ポアソン・順位シミュレーション）
+ * 15. 予測タブ（ヒートマップ・ELO・攻守力）／次節予想
+ * 16. 開幕前予測（強さ係数の自動調整・部門間の補正）
+ * 17. 起動処理
+ * ════════════════════════════════════════════════════════════
+ */
 
-// ══ 1. DB (localStorage) ══
+// ══════════════════════════════════
+// 1. 保存（localStorage／IndexedDB・圧縮）
+// ══════════════════════════════════
 const KEY = 'winner-final-v1';
 // ══ 保存データの圧縮 ══
 // 試合データはチーム名を文字列でそのまま持つと容量を大きく消費する（1試合あたり100文字超）。
@@ -758,7 +763,9 @@ function migrateAddPlayedAt(d){
   d._seq = seq;
 }
 
-// ══ 1. 状態管理 ══
+// ══════════════════════════════════
+// 2. 状態管理・初期化
+// ══════════════════════════════════
 let db = load();
 let curDiv = {home:1, matches:1, po:1, predict:1};
 let allMatches = {};
@@ -771,7 +778,7 @@ let trendSelInit = false, isSelInit = false;
 let teDiv = 1;
 let leagueSubtab = 'matches'; // 'matches' | 'po'
 
-// ══ 1. 初期化 ══
+// ══ 初期化 ══
 function init(){
   const yr = new Date().getFullYear();
   refreshSeasonSelects();
@@ -806,7 +813,10 @@ function latestSeason(){
   return seasons.length ? seasons[0] : null;
 }
 
-// ══ 2. ページ切替 ══
+// ══════════════════════════════════
+// 3. ページ切替・部門タブ・データアクセス
+// ══════════════════════════════════
+// ══ ページ切替 ══
 function go(name, btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
@@ -834,21 +844,37 @@ function switchLeagueSubtab(tab){
   if(tab==='po') renderPlayoff();
 }
 
-// ══ 2. 部門タブ共通処理 ══
+// ══ 部門の色・略称（CSSの --d1〜--d3 と対応） ══
+const DIV_COLOR = {1:'var(--d1)', 2:'var(--d2)', 3:'var(--d3)'};
+const DIV_RGB   = {1:'229,57,53', 2:'0,168,84', 3:'2,136,209'}; // 透明度を変えて塗る場面（ヒートマップ）用
+const divColor = d => DIV_COLOR[d] || 'var(--muted)';
+const divShortName = d => ({1:'1部', 2:'2部', 3:'3部'})[d] || '—';
+// 部門色を薄く敷いたバッジの背景
+const divTint = d => `color-mix(in srgb, ${divColor(d)} 14%, transparent)`;
+// CSS変数の実際の値（canvasに描くときに使う。canvasはvar()を解釈できないため）
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ══ 部門タブ共通処理 ══
+// 部門タブを描く。タブを押したときの処理（cb）はタブ列ごとに覚えておき、selectDivTab から呼ぶ
+const divTabHandlers = {};
 function buildDivTabs(id, active, cb){
+  divTabHandlers[id] = cb;
   const dn = db.config.div_names;
-  const dc = {1:'var(--d1)',2:'var(--d2)',3:'var(--d3)'};
   document.getElementById(id).innerHTML = [1,2,3].map(d=>`
     <div class="tab ${d===active?'active':''}" data-d="${d}"
-      style="${d===active?`background:${dc[d]};border-color:${dc[d]};`:''}"
-      onclick="this.parentNode.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.style.background='';t.style.borderColor='';});
-               this.classList.add('active');this.style.background='${dc[d]}';this.style.borderColor='${dc[d]}';
-               (${cb.toString()})(${d})">
+      style="${d===active?`background:${DIV_COLOR[d]};border-color:${DIV_COLOR[d]};`:''}"
+      onclick="selectDivTab('${id}', this, ${d})">
       ${dn[d]||d+'部'}
     </div>`).join('');
 }
+function selectDivTab(id, el, d){
+  el.parentNode.querySelectorAll('.tab').forEach(t=>{ t.classList.remove('active'); t.style.background=''; t.style.borderColor=''; });
+  el.classList.add('active');
+  el.style.background = DIV_COLOR[d]; el.style.borderColor = DIV_COLOR[d];
+  divTabHandlers[id](d);
+}
 
-// ══ 2. データアクセス共通処理 ══
+// ══ データアクセス共通処理 ══
 // シーズンのメタ情報（表示名・並び順）。変則シーズン（「26/27」「百年構想リーグ」等）に対応するため、
 // キー自体は内部IDとして扱い、画面には表示名を出す。
 function getSeasonMeta(yr){
@@ -875,25 +901,43 @@ function getSeasons(){
 function getDivData(yr,div){ yr=String(yr); return db.seasons[yr]?.divisions?.[String(div)]; }
 function getDivName(div){ return db.config.div_names[div]||div+'部'; }
 
-// ══ 3. 順位計算 ══
+// ══════════════════════════════════
+// 4. 順位計算・順位表
+// ══════════════════════════════════
+// ══ 順位計算 ══
+// 試合結果をあるチームの視点で返す（得点・失点・勝点・勝敗）
+function resultFor(m, team){
+  const isHome = m.home===team;
+  const gf = isHome ? m.home_score : m.away_score;
+  const ga = isHome ? m.away_score : m.home_score;
+  return { gf, ga, isHome, pts: gf>ga?3:gf===ga?1:0, res: gf>ga?'W':gf===ga?'D':'L' };
+}
+// 試合の一覧から、チームごとの成績（試合・勝・分・敗・得・失・差・勝点）を集計する。
+// 結果が入っていない試合と、teams にいないチームの試合は数えない。
+function tallyStandings(teams, matches){
+  const s = {};
+  teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+  (matches||[]).forEach(m=>{
+    if(!m.played || !s[m.home] || !s[m.away]) return;
+    [[m.home, m.home_score, m.away_score], [m.away, m.away_score, m.home_score]].forEach(([t, gf, ga])=>{
+      const r = s[t];
+      r.p++; r.gf += gf; r.ga += ga; r.gd = r.gf - r.ga;
+      if(gf>ga){ r.w++; r.pts += 3; } else if(gf===ga){ r.d++; r.pts++; } else r.l++;
+    });
+  });
+  return s;
+}
+// 順位の並べ方（勝点→得失点差→総得点）
+function sortStandings(tally){
+  return Object.values(tally).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
+}
 function calcStandings(yr,div){ yr=String(yr);
   const d = getDivData(yr,div);
   if(!d) return [];
-  const s={};
-  d.teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
-  (d.matches||[]).forEach(m=>{
-    if(!m.played) return;
-    const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
-    s[h].p++;s[a].p++;s[h].gf+=hs;s[h].ga+=as_;s[a].gf+=as_;s[a].ga+=hs;
-    s[h].gd=s[h].gf-s[h].ga;s[a].gd=s[a].gf-s[a].ga;
-    if(hs>as_){s[h].w++;s[h].pts+=3;s[a].l++;}
-    else if(hs<as_){s[a].w++;s[a].pts+=3;s[h].l++;}
-    else{s[h].d++;s[h].pts++;s[a].d++;s[a].pts++;}
-  });
-  return Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf).map((r,i)=>({...r,rank:i+1}));
+  return sortStandings(tallyStandings(d.teams, d.matches)).map((r,i)=>({...r,rank:i+1}));
 }
 
-// ══ 3. 順位表（ホーム） ══
+// ══ 順位表（ホーム） ══
 let standingsView = 'detail'; // 'detail' | 'form'
 function switchStandingsView(view){
   standingsView = view;
@@ -917,18 +961,7 @@ function getRankMovements(yr, div){
   if(!prevMatches.length) return {}; // 1節しか消化していなければ変動なし
 
   // 前節時点の順位表を組む（calcStandingsと同じ並び順の規則で）
-  const s = {};
-  d.teams.forEach(t=>{ s[t]={team:t, pts:0, gd:0, gf:0}; });
-  prevMatches.forEach(m=>{
-    if(!s[m.home] || !s[m.away]) return;
-    const hs=m.home_score, as_=m.away_score;
-    s[m.home].gf+=hs; s[m.home].gd+=hs-as_;
-    s[m.away].gf+=as_; s[m.away].gd+=as_-hs;
-    if(hs>as_) s[m.home].pts+=3;
-    else if(hs<as_) s[m.away].pts+=3;
-    else { s[m.home].pts++; s[m.away].pts++; }
-  });
-  const prevRanked = Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
+  const prevRanked = sortStandings(tallyStandings(d.teams, prevMatches));
   const prevRank = {};
   prevRanked.forEach((r,i)=>{ prevRank[r.team]=i+1; });
 
@@ -971,7 +1004,7 @@ function loadStandings(){
   const pN = d?.promoteN||1, rN = d?.relegateN||1;
   const poEnabled = d?.playoff?.enabled;
   const poN = d?.playoff?.playoffN||0;
-  const color = ['','var(--d1)','var(--d2)','var(--d3)'][div];
+  const color = DIV_COLOR[div];
   const n = rows.length;
 
   // 今どの部門を見ているかが一目で分かるよう、上部に部門カラーの帯を出す
@@ -1049,7 +1082,10 @@ function loadStandings(){
   document.getElementById('standings-area').innerHTML=html;
 }
 
-// ══ 4. 試合生成 ══
+// ══════════════════════════════════
+// 5. 試合生成・試合入力（リーグ）
+// ══════════════════════════════════
+// ══ 試合生成 ══
 function genMatches(teams){
   const t=[...teams];
   if(t.length%2)t.push(null);
@@ -1080,7 +1116,7 @@ function getContinuousRound(matches, leg, round){
   return maxRound1 + round;
 }
 
-// ══ 4. 試合入力（リーグ） ══
+// ══ 試合入力（リーグ） ══
 let roundPick = {}; // 「年度-部門」ごとに、最後に見ていた節を覚えておく
 let teamPick = {};  // 「年度-部門」ごとに、絞り込んでいるチームを覚えておく
 
@@ -1448,7 +1484,10 @@ function deleteManualMatch(yr, div, id){
 }
 
 
-// ══ 5. 設定：自動昇降格＋シーズン一括開始 ══
+// ══════════════════════════════════
+// 6. 設定：シーズン開始（自動昇降格）・名称・チーム編集
+// ══════════════════════════════════
+// ══ 自動昇降格＋シーズン一括開始 ══
 const AUTO_PROMOTE_N = 2;   // 自動昇格枠（1〜2位）
 const AUTO_RELEGATE_N = 3;  // 自動降格枠（下位3チーム）
 
@@ -1733,7 +1772,7 @@ function saveCupName(slot){
   buildCupSlotTabs();
 }
 
-// ══ 6. チーム編集（追加・削除） ══
+// ══ チーム編集（追加・削除） ══
 // 全シーズン・全部門（＋カップ戦）を対象に、指定チームが1試合でも組まれているか調べる
 function teamHasAnyMatches(name){
   for(const yr in db.seasons){
@@ -1770,11 +1809,11 @@ function renderTeamEditor(){
       actionBtn = `<button class="btn btn-sub btn-sm" onclick="restoreTeam('${name.replace(/'/g,"\\'")}')">復元</button>`;
     } else if(!hasMatches){
       // 試合が一度も組まれていない＝誤字などで増えたチームは完全削除できる
-      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="hardDeleteTeam('${name.replace(/'/g,"\\'")}')">🗑 完全削除</button>`;
+      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:var(--red);" onclick="hardDeleteTeam('${name.replace(/'/g,"\\'")}')">🗑 完全削除</button>`;
     } else {
-      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:#ffcdd2;" onclick="removeTeamFromEditor('${name.replace(/'/g,"\\'")}')">削除</button>`;
+      actionBtn = `<button class="btn btn-sub btn-sm" style="color:var(--red);border-color:var(--red);" onclick="removeTeamFromEditor('${name.replace(/'/g,"\\'")}')">削除</button>`;
     }
-    html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5;${inactive?'opacity:.45;':''}">
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--divider);${inactive?'opacity:.45;':''}">
       <span style="flex:1;font-size:13px;font-weight:700;">${name}${inactive?' (削除済)':''}${!inactive&&!hasMatches?' <span style="font-size:10px;color:var(--muted);font-weight:400;">（試合未組込）</span>':''}</span>
       ${actionBtn}
     </div>`;
@@ -1831,7 +1870,10 @@ function restoreTeam(name){
   buildH2HSelects();
 }
 
-// ══ 7. CSVエクスポート（バックアップ） ══
+// ══════════════════════════════════
+// 7. 設定：書き出し・バックアップ・シーズン削除
+// ══════════════════════════════════
+// ══ CSVエクスポート ══
 // 保存データの使用量を表示する
 function buildStorageInfo(){
   const el = document.getElementById('storage-info');
@@ -1947,7 +1989,7 @@ function exportMatchesCSV(){
   setTimeout(()=>{ msg.textContent=''; }, 3000);
 }
 
-// ══ 7. 全データのバックアップ（JSONファイル） ══
+// ══ 全データのバックアップ（JSONファイル） ══
 // CSVは試合結果のみだが、こちらはカップ戦・レーティング履歴・シーズン設定まで含めた
 // 完全なバックアップ。別の端末やブラウザへの引っ越しにも使える。
 const BACKUP_FORMAT = 'winner-pro-backup';
@@ -2030,7 +2072,7 @@ function importFullBackup(input){
 }
 
 
-// ══ 7. シーズン削除 ══
+// ══ シーズン削除 ══
 function deleteSeason(){
   const sel = document.getElementById('del-yr');
   const yr = sel.value;
@@ -2064,7 +2106,9 @@ function deleteSeason(){
   setTimeout(()=>msg.textContent='', 3000);
 }
 
-// ══ 8. 対戦成績（H2H） ══
+// ══════════════════════════════════
+// 8. 対戦成績（H2H）
+// ══════════════════════════════════
 function buildH2HSelects(){
   const elA = document.getElementById('h2h-a'), elB = document.getElementById('h2h-b');
   if(!elA || !elB) return; // 記録タブの対戦サブタブを開いていない時はDOM未生成のため何もしない
@@ -2134,7 +2178,7 @@ function showH2H(){
     html+=`<div class="slbl">対戦履歴</div><div class="card">`;
     hist.forEach(h=>{
       const rc=h.res==='W'?'var(--g)':h.res==='L'?'var(--red)':'var(--gold)';
-      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
+      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);gap:8px;">
         <div style="font-size:11px;color:var(--muted);flex:0 0 auto;">${getSeasonLabel(h.yr)}<br>${h.divLabel}</div>
         <div style="flex:1;text-align:center;font-size:13px;font-weight:700;">${h.home} ${h.hs}−${h.as_} ${h.away}</div>
         <div style="font-size:15px;font-weight:700;color:${rc};flex:0 0 auto;">${h.res}</div>
@@ -2145,7 +2189,10 @@ function showH2H(){
   document.getElementById('h2h-area').innerHTML=html;
 }
 
-// ══ 9. 記録タブ：歴代 ══
+// ══════════════════════════════════
+// 9. 記録タブ（歴代・タイトル・連勝・金星・プロフィール・推移）
+// ══════════════════════════════════
+// ══ 歴代 ══
 function switchHistTab(tab, el){
   if(el){
     el.parentNode.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -2224,7 +2271,7 @@ function renderHistAlltime(){
 
   // ── 優勝回数（部門別） ──
   [1,2,3].forEach(div=>{
-    const color=['','#e53935','#00a854','#0288d1'][div];
+    const color=DIV_COLOR[div];
     const wins={};
     seasons.forEach(yr=>{
       const r=getStandings(yr,div);
@@ -2235,7 +2282,7 @@ function renderHistAlltime(){
     html+=`<div class="slbl" style="color:${color};">🏆 優勝回数（${getDivName(div)}）</div><div class="card">`;
     ranked.slice(0,8).forEach(([team,cnt],i)=>{
       const rc=i===0?'var(--gold)':i===1?'#90a4ae':i===2?'#ff8a65':'var(--muted)';
-      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;">
+      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);">
         <span style="font-size:15px;font-weight:700;color:${rc};width:26px;">${i+1}</span>
         <span style="flex:1;font-size:13px;font-weight:700;">${team}</span>
         <span style="font-size:13px;color:${color};font-weight:700;">${cnt}回</span>
@@ -2505,7 +2552,7 @@ function renderUpsetsRanking(){
     } else {
       results.slice(0,15).forEach((r,i)=>{
         const label = r.isLeague ? getDivName(r.div) : getCupName(r.cupSlot);
-        html += `<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
+        html += `<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);gap:8px;">
           <span style="font-size:15px;font-weight:700;color:var(--gold);width:24px;flex:0 0 auto;">${i+1}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;">${r.winner} ${r.hs}−${r.as_} ${r.loser}</div>
@@ -2520,7 +2567,6 @@ function renderUpsetsRanking(){
   }, 30);
 }
 
-// ══ チーム別プロフィール ══
 // ══ 開幕時レーティングのスナップショット閲覧 ══
 function renderRatingSnapshots(){
   const el = document.getElementById('history-area');
@@ -2578,6 +2624,7 @@ function showRatingSnapshot(){
   contentEl.innerHTML = html;
 }
 
+// ══ チーム別プロフィール ══
 function renderTeamProfile(){
   const teams = Object.keys(db.teams).filter(t=>db.teams[t].active);
   const el = document.getElementById('history-area');
@@ -2649,11 +2696,10 @@ function showTeamProfile(){
   // 昇降格履歴
   const log = (db.promotionLog||[]).filter(e=>e.team===team).sort((a,b)=>parseInt(b.toYear)-parseInt(a.toYear));
 
-  const divColor = d => ['','var(--d1)','var(--d2)','var(--d3)'][d]||'var(--muted)';
 
   let html = `<div class="card"><div class="card-body" style="text-align:center;padding:20px;">
     <div style="font-size:20px;font-weight:700;">${team}</div>
-    ${curInfo?`<div style="margin-top:6px;"><span class="cup-div-badge" style="background:${divColor(curInfo.div)}22;color:${divColor(curInfo.div)};font-size:11px;padding:3px 10px;">${getDivName(curInfo.div)} 現在${curInfo.rank}位</span></div>`:''}
+    ${curInfo?`<div style="margin-top:6px;"><span class="cup-div-badge" style="background:${divTint(curInfo.div)};color:${divColor(curInfo.div)};font-size:11px;padding:3px 10px;">${getDivName(curInfo.div)} 現在${curInfo.rank}位</span></div>`:''}
   </div></div>`;
 
   html += `<div class="stat-pills" style="padding:0 0 4px;">
@@ -2713,7 +2759,7 @@ function showTeamProfile(){
   if(recMaxGF){
     const recRow = (rec, label, color, headline) => {
       const vs = rec.home ? `${team} ${rec.my}-${rec.opp} ${rec.opponent}` : `${rec.opponent} ${rec.opp}-${rec.my} ${team}`;
-      return `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid #f0f2f5;gap:10px;">
+      return `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
         <span style="font-size:11px;color:var(--muted);flex:0 0 72px;">${label}</span>
         <span style="font-size:16px;font-weight:700;color:${color};flex:0 0 auto;">${headline}</span>
         <span style="font-size:12px;flex:1;text-align:right;">
@@ -2735,7 +2781,7 @@ function showTeamProfile(){
       const isUp = e.toDiv < e.fromDiv;
       const arrow = isUp ? '🔼' : '🔽';
       const color = isUp ? 'var(--g)' : 'var(--red)';
-      html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid #f0f2f5;gap:8px;">
+      html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:8px;">
         <span style="font-size:11px;color:var(--muted);flex:0 0 auto;width:60px;">${e.fromYear}→${e.toYear}</span>
         <span style="font-size:12px;color:${color};font-weight:700;">${arrow} ${e.fromDiv}部→${e.toDiv}部</span>
       </div>`;
@@ -2912,10 +2958,10 @@ function drawTrend(seasons, teamCombined, bands){
 
   // 横グリッド（1位刻みは多すぎるので5刻み目安で）
   const rankStep = totalSpan>40 ? 5 : totalSpan>20 ? 2 : 1;
-  ctx.strokeStyle='#eee';ctx.lineWidth=1;
+  ctx.strokeStyle=cssVar('--border');ctx.lineWidth=1;
   for(let r=1;r<=totalSpan;r+=rankStep){
     ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();
-    ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='right';
+    ctx.fillStyle=cssVar('--muted');ctx.font='9px sans-serif';ctx.textAlign='right';
     ctx.fillText(r+'位',pl-4,ys(r)+3);
   }
 
@@ -2925,11 +2971,11 @@ function drawTrend(seasons, teamCombined, bands){
     const botY = ys(b.offset+b.size);
     // 区切り線（バンドの下端、最後のバンド以外）
     if(bi < bands.length-1){
-      ctx.strokeStyle='#c8d2e0'; ctx.lineWidth=2;
+      ctx.strokeStyle=cssVar('--border'); ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(pl-4, botY); ctx.lineTo(W-pr+4, botY); ctx.stroke();
     }
     // バンドラベル（右端）
-    ctx.fillStyle='#6b7c93'; ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
+    ctx.fillStyle=cssVar('--muted'); ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
     ctx.fillText(getDivName(b.div), W-pr+8, (topY+botY)/2+3);
   });
 
@@ -2937,7 +2983,7 @@ function drawTrend(seasons, teamCombined, bands){
   const labelStep = Math.max(1, Math.ceil(n/14));
   seasons.forEach((yr,i)=>{
     if(i%labelStep!==0 && i!==n-1) return;
-    ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=cssVar('--muted');ctx.font='9px sans-serif';ctx.textAlign='center';
     ctx.fillText(yr,xs(i),H-pb+12);
   });
 
@@ -3006,18 +3052,7 @@ function computeInseasonSnapshots(yr, div){
   const snaps = rl.map(k=>{
     const [l,r] = k.split('-').map(Number);
     const sub = played.filter(m => (m.leg<l) || (m.leg===l && m.round<=r));
-    const s = {};
-    allTeams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
-    sub.forEach(m=>{
-      const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
-      s[h].p++; s[a].p++;
-      s[h].gf+=hs; s[h].ga+=as_; s[a].gf+=as_; s[a].ga+=hs;
-      s[h].gd=s[h].gf-s[h].ga; s[a].gd=s[a].gf-s[a].ga;
-      if(hs>as_){ s[h].pts+=3; s[h].w++; s[a].l++; }
-      else if(hs<as_){ s[a].pts+=3; s[a].w++; s[h].l++; }
-      else{ s[h].pts++; s[a].pts++; s[h].d++; s[a].d++; }
-    });
-    const ranked = Object.values(s).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
+    const ranked = sortStandings(tallyStandings(allTeams, sub));
     ranked.forEach((rr,i)=>rr.rank=i+1);
     return { leg:l, round:r, cround: getContinuousRound(matches, l, r), ranks: Object.fromEntries(ranked.map(rr=>[rr.team, rr.rank])) };
   });
@@ -3124,13 +3159,13 @@ function drawIsChart(snaps,allTeams){
   const n=snaps.length,nt=allTeams.length;
   const xs=i=>pl+gw*i/Math.max(n-1,1);
   const ys=r=>pt+gh*(r-1)/Math.max(nt-1,1);
-  ctx.strokeStyle='#eee';ctx.lineWidth=1;
-  for(let r=1;r<=nt;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
+  ctx.strokeStyle=cssVar('--border');ctx.lineWidth=1;
+  for(let r=1;r<=nt;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle=cssVar('--muted');ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
   // 節が多い場合はラベルを間引いて重なりを防ぐ
   const labelStep = Math.max(1, Math.ceil(n/12));
   snaps.forEach((s,i)=>{
     if(i%labelStep!==0 && i!==n-1) return;
-    ctx.fillStyle='#aaa';ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=cssVar('--muted');ctx.font='9px sans-serif';ctx.textAlign='center';
     ctx.fillText(`第${s.cround}節`,xs(i),220-pb+10);
   });
   allTeams.forEach((t,ti)=>{
@@ -3144,178 +3179,9 @@ function drawIsChart(snaps,allTeams){
   });
 }
 
-// ══ 10. 昇格プレーオフ（PO） ══
-// ══ 次節の勝敗予想 ══
-// ポアソン分布の確率質量関数（k点が入る確率）
-function poissonPmf(k, lambda){
-  if(lambda<=0) return k===0?1:0;
-  let logP = -lambda + k*Math.log(lambda);
-  for(let i=2;i<=k;i++) logP -= Math.log(i);
-  return Math.exp(logP);
-}
-
-// 2チームの期待得点から、勝ち/分け/負けの確率と最有力スコアを厳密に計算する
-// 補正が掛け算で積み重なると、まれに「勝率97%」のような極端な予想になってしまう。
-// 実際のサッカーでは番狂わせが起こるため、両チームの期待得点の比に上限を設けて現実的な範囲に収める。
-const MAX_LAMBDA_RATIO = 4;
-function balanceLambdas(lamH, lamA){
-  const total = lamH + lamA;
-  if(total <= 0) return [lamH, lamA];
-  const ratio = lamH / lamA;
-  if(ratio > MAX_LAMBDA_RATIO){
-    const newA = total/(1+MAX_LAMBDA_RATIO);
-    return [total-newA, newA];      // 合計得点は保ったまま差を圧縮
-  }
-  if(ratio < 1/MAX_LAMBDA_RATIO){
-    const newH = total/(1+MAX_LAMBDA_RATIO);
-    return [newH, total-newH];
-  }
-  return [lamH, lamA];
-}
-
-function computeMatchProbabilities(lamH, lamA, maxGoals=12){
-  let pH=0, pD=0, pA=0;
-  const scoreProbs=[];
-  for(let h=0;h<=maxGoals;h++){
-    for(let a=0;a<=maxGoals;a++){
-      const p = poissonPmf(h,lamH)*poissonPmf(a,lamA);
-      if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p;
-      scoreProbs.push({h,a,p});
-    }
-  }
-  // 打ち切りによる取りこぼし分を按分し、合計がちょうど100%になるようにする
-  const total = pH+pD+pA;
-  if(total>0){ pH/=total; pD/=total; pA/=total; scoreProbs.forEach(s=>s.p/=total); }
-  scoreProbs.sort((x,y)=>y.p-x.p);
-  return {pH, pD, pA, topScores:scoreProbs.slice(0,3)};
-}
-
-function renderNextRoundForecast(){
-  const yr = latestSeason();
-  const div = curDiv.matches;
-  const el = document.getElementById('forecast-area');
-  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
-
-  const d = getDivData(yr, div);
-  if(!d || !d.matches || !d.matches.length){ el.innerHTML='<div class="loading">試合がありません</div>'; return; }
-
-  // 「次節」＝まだ結果が入っていない試合のうち、最も早い節
-  const pending = d.matches.filter(m=>!m.played);
-  if(!pending.length){ el.innerHTML='<div class="loading">全試合が終了しています</div>'; return; }
-  const nextKey = pending
-    .map(m=>({leg:m.leg, round:m.round, cr:getContinuousRound(d.matches, m.leg, m.round)}))
-    .sort((a,b)=>a.cr-b.cr)[0];
-  const nextMatches = pending.filter(m=>m.leg===nextKey.leg && m.round===nextKey.round);
-
-  el.innerHTML = `<div class="loading loading-active">🔮 次節の予想を計算中…</div>`;
-
-  setTimeout(()=>{
-    calibrateStrength();
-    // 予測モデルと同じ期待得点の組み立て方を使う
-    const {elo} = calcAllElo();
-    const teams = d.teams;
-    const ad = {};
-    teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
-    const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway(div);
-    const adHA = {};
-    teams.forEach(t=>{ adHA[t] = getHomeAwayAttackDefense(yr, div, t, ad[t], avgHome, avgAway); });
-    const teamHA = computeTeamHomeAdvantages(elo);
-    const leagueHA = teamHA._leagueDefault;
-    const haMultiplier = t => {
-      const diff = (teamHA[t]!==undefined ? teamHA[t] : leagueHA) - leagueHA;
-      return Math.max(0.75, Math.min(1.30, 1 + diff/100 * 0.15));
-    };
-
-    const standings = calcStandings(yr, div);
-    const rankOf = {};
-    standings.forEach(r=>{ rankOf[r.team]=r.rank; });
-
-    let html = `<div class="slbl">🔮 第${nextKey.cr}節 勝敗予想</div>`;
-
-    nextMatches.forEach(m=>{
-      const h=m.home, a=m.away;
-      if(!adHA[h] || !adHA[a]) return;
-
-      let lamH = avgHome * adHA[h].homeAttack * adHA[a].awayDefense;
-      let lamA = avgAway * adHA[a].awayAttack * adHA[h].homeDefense;
-      const hMult = haMultiplier(h);
-      lamH *= hMult;
-      lamA /= Math.max(0.85, hMult);
-
-      // 順位予想と同じ基準で、直近の調子（勝点ペース＋得失点差）を反映する
-      const NEUTRAL_F = 1.3, K_FORM_F = 0.45, K_GD_F = 0.04;
-      const formMult = (t)=>{
-        let mm = 1;
-        if(t.recentAvg!=null) mm *= (1 + (t.recentAvg-NEUTRAL_F)*K_FORM_F/3);
-        if(t.recentGd!=null)  mm *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD_F);
-        return Math.max(0.7, Math.min(1.4, mm));
-      };
-      lamH *= formMult(getTeamTendency(yr, div, h));
-      lamA *= formMult(getTeamTendency(yr, div, a));
-
-      const h2h = getH2HStats(h, a);
-      if(h2h && h2h.total>=2){
-        const blend = Math.min(0.25, h2h.total*0.03);
-        lamH = lamH*(1-blend) + h2h.aAvgGoals*blend;
-        lamA = lamA*(1-blend) + h2h.bAvgGoals*blend;
-      }
-      lamH = Math.max(0.15, Math.min(5.0, lamH));
-      lamA = Math.max(0.15, Math.min(5.0, lamA));
-      [lamH, lamA] = balanceLambdas(lamH, lamA);
-
-      const {pH, pD, pA, topScores} = computeMatchProbabilities(lamH, lamA);
-      const pHp = Math.round(pH*100), pDp = Math.round(pD*100), pAp = Math.round(pA*100);
-
-      // 直近フォーム
-      const formH = getRecentForm(yr, div, h, 5);
-      const formA = getRecentForm(yr, div, a, 5);
-      const formHtml = form => form.length
-        ? form.map(f=>{
-            const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
-            return `<span class="form-dot" style="background:${bg};width:13px;height:13px;font-size:8px;margin-right:2px;">${f.result}</span>`;
-          }).join('')
-        : '<span style="color:var(--muted);font-size:9px;">—</span>';
-
-      html += `<div class="card"><div class="card-body">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <div style="flex:1;text-align:right;">
-            <div style="font-size:13px;font-weight:700;">${h}</div>
-            <div style="font-size:9px;color:var(--muted);">${rankOf[h]?rankOf[h]+'位':''} ・ ホーム</div>
-            <div style="margin-top:3px;">${formHtml(formH)}</div>
-          </div>
-          <div style="flex:0 0 auto;font-size:11px;color:var(--muted);font-weight:700;">vs</div>
-          <div style="flex:1;">
-            <div style="font-size:13px;font-weight:700;">${a}</div>
-            <div style="font-size:9px;color:var(--muted);">${rankOf[a]?rankOf[a]+'位':''} ・ アウェイ</div>
-            <div style="margin-top:3px;">${formHtml(formA)}</div>
-          </div>
-        </div>
-
-        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;font-size:10px;font-weight:700;color:#fff;">
-          <div style="width:${pHp}%;background:var(--g);display:flex;align-items:center;justify-content:center;">${pHp>=12?pHp+'%':''}</div>
-          <div style="width:${pDp}%;background:var(--gold);display:flex;align-items:center;justify-content:center;">${pDp>=12?pDp+'%':''}</div>
-          <div style="width:${pAp}%;background:var(--red);display:flex;align-items:center;justify-content:center;">${pAp>=12?pAp+'%':''}</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:3px;">
-          <span>ホーム勝ち ${pHp}%</span><span>引き分け ${pDp}%</span><span>アウェイ勝ち ${pAp}%</span>
-        </div>
-
-        <div style="margin-top:8px;font-size:10px;color:var(--muted);">
-          予想スコア：${topScores.map(s=>`<strong style="color:var(--text);">${s.h}-${s.a}</strong>(${Math.round(s.p*100)}%)`).join(' ／ ')}
-        </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">
-          期待得点：${lamH.toFixed(2)} - ${lamA.toFixed(2)}
-        </div>
-      </div></div>`;
-    });
-
-    html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-      ※ ELO・ホーム/アウェイ別の攻守力・チーム固有のホームアドバンテージ・直接対決成績をもとに、ポアソン分布で算出した確率です。
-    </p>`;
-
-    el.innerHTML = html;
-  }, 30);
-}
+// ══════════════════════════════════
+// 10. 昇格プレーオフ（PO）
+// ══════════════════════════════════
 
 function renderPlayoff(){
   const yr=latestSeason();
@@ -3863,13 +3729,11 @@ function renderCup(){
     return;
   }
 
-  const div_names_short = ['','1部','2部','3部'];
-  const divColor = d => ['','var(--d1)','var(--d2)','var(--d3)'][d]||'var(--muted)';
 
   let html = `<div class="card">
     <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;">
       <div style="font-size:12px;color:var(--muted);">${cupName}：参加${cup.size}チーム${cup.mode==='auto'?`（シード${CUP_SEED_COUNT}）`:'（手動作成）'}</div>
-      <button class="btn btn-sm" style="background:var(--red2);color:var(--red);border:1px solid #ffcdd2;" onclick="deleteCup('${yr}',${slot})">🗑️ 削除してやり直す</button>
+      <button class="btn btn-sm" style="background:var(--red2);color:var(--red);border:1px solid var(--red);" onclick="deleteCup('${yr}',${slot})">🗑️ 削除してやり直す</button>
     </div>
   </div>`;
 
@@ -3881,7 +3745,7 @@ function renderCup(){
       html += `<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;">
         <span style="width:24px;color:var(--gold);font-weight:700;">${i+1}</span>
         <span style="flex:1;font-weight:700;">${t}</span>
-        <span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]||'—'}</span>
+        <span class="cup-div-badge" style="background:${divTint(d)};color:${divColor(d)};">${divShortName(d)}</span>
       </div>`;
     });
     html += `</div></div>`;
@@ -3909,7 +3773,7 @@ function renderCup(){
         if(!name) return '<span style="color:var(--muted);">未定</span>';
         let badge = '';
         if(seed) badge += `<span class="cup-seed-badge">SEED${seed}</span>`;
-        if(d) badge += `<span class="cup-div-badge" style="background:${divColor(d)}22;color:${divColor(d)};">${div_names_short[d]}</span>`;
+        if(d) badge += `<span class="cup-div-badge" style="background:${divTint(d)};color:${divColor(d)};">${divShortName(d)}</span>`;
         return `<span>${name}${badge}</span>`;
       };
       const aIsBye = m.walkover && m.teamA===null;
@@ -3932,7 +3796,7 @@ function renderCup(){
       <div style="font-size:30px;">🏆</div>
       <div style="font-size:16px;font-weight:700;color:var(--gold);margin-top:6px;">${cupName} 優勝</div>
       <div style="font-size:20px;font-weight:700;margin-top:6px;">${cup.winner}</div>
-      <div style="margin-top:4px;"><span class="cup-div-badge" style="background:${divColor(cup.winnerDiv)}22;color:${divColor(cup.winnerDiv)};">${div_names_short[cup.winnerDiv]||'—'}</span></div>
+      <div style="margin-top:4px;"><span class="cup-div-badge" style="background:${divTint(cup.winnerDiv)};color:${divColor(cup.winnerDiv)};">${divShortName(cup.winnerDiv)}</span></div>
     </div>`;
   }
 
@@ -3946,7 +3810,10 @@ function switchCupCreateMode(mode, slot){
   document.getElementById(`cup-create-manual-${slot}`).style.display = mode==='manual' ? '' : 'none';
 }
 
-// ══ 12. 過去データのフォーム入力 ══
+// ══════════════════════════════════
+// 12. 設定：過去データのフォーム入力・ユーティリティ
+// ══════════════════════════════════
+// ══ 過去データのフォーム入力 ══
 function setTeamRows(){
   const n = parseInt(document.getElementById('pi-count').value) || 10;
   const wrap = document.getElementById('pi-rows');
@@ -4050,7 +3917,7 @@ function exportCurrentData(){
   }
 }
 
-// ══ 12. ユーティリティ ══
+// ══ ユーティリティ ══
 function sorted(arr){ return [...arr].sort(); }
 
 // 順位取得（past_standings優先、なければcalcStandings）
@@ -4341,7 +4208,7 @@ function getAttackDefenseTableAll(){
 }
 
 // ══════════════════════════════════
-// 14. 予測：チーム傾向・攻撃力守備力ヘルパー
+// 14. 予測モデル（チーム傾向・攻撃力／守備力・ポアソン・順位シミュレーション）
 // ══════════════════════════════════
 
 // チームの「直近フォーム」「ホーム成績」「アウェイ成績」を計算（当該シーズン内）
@@ -4351,22 +4218,12 @@ function getTeamTendency(yr, div, team){
   const played = (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team))
     .sort((a,b)=>a.leg-b.leg||a.round-b.round||a.id-b.id);
 
-  const ptsFor = m=>{
-    const isHome = m.home===team;
-    const gf = isHome?m.home_score:m.away_score;
-    const ga = isHome?m.away_score:m.home_score;
-    return gf>ga?3:gf===ga?1:0;
-  };
-  const gdFor = m=>{
-    const isHome = m.home===team;
-    const gf = isHome?m.home_score:m.away_score;
-    const ga = isHome?m.away_score:m.home_score;
-    return gf-ga;
-  };
+  const ptsFor = m => resultFor(m, team).pts;
+  const gdFor = m => { const r = resultFor(m, team); return r.gf - r.ga; };
 
   const recent = played.slice(-5);
   const recentAvg = recent.length ? recent.reduce((s,m)=>s+ptsFor(m),0)/recent.length : null;
-  // 【案D】勝点だけでは「辛勝continuous」と「大勝continuous」が同じ扱いになるため、
+  // 【案D】勝点だけでは「辛勝続き」と「大勝続き」が同じ扱いになるため、
   //        直近の平均得失点差も調子の指標として持たせる
   const recentGd = recent.length ? recent.reduce((s,m)=>s+gdFor(m),0)/recent.length : null;
 
@@ -4379,6 +4236,52 @@ function getTeamTendency(yr, div, team){
 }
 
 // 2チームの全シーズン通算・直接対決成績（得点も含む）
+// ══ ポアソン分布による試合結果の確率 ══
+// ポアソン分布の確率質量関数（k点が入る確率）
+function poissonPmf(k, lambda){
+  if(lambda<=0) return k===0?1:0;
+  let logP = -lambda + k*Math.log(lambda);
+  for(let i=2;i<=k;i++) logP -= Math.log(i);
+  return Math.exp(logP);
+}
+
+// 2チームの期待得点から、勝ち/分け/負けの確率と最有力スコアを厳密に計算する
+// 補正が掛け算で積み重なると、まれに「勝率97%」のような極端な予想になってしまう。
+// 実際のサッカーでは番狂わせが起こるため、両チームの期待得点の比に上限を設けて現実的な範囲に収める。
+const MAX_LAMBDA_RATIO = 4;
+function balanceLambdas(lamH, lamA){
+  const total = lamH + lamA;
+  if(total <= 0) return [lamH, lamA];
+  const ratio = lamH / lamA;
+  if(ratio > MAX_LAMBDA_RATIO){
+    const newA = total/(1+MAX_LAMBDA_RATIO);
+    return [total-newA, newA];      // 合計得点は保ったまま差を圧縮
+  }
+  if(ratio < 1/MAX_LAMBDA_RATIO){
+    const newH = total/(1+MAX_LAMBDA_RATIO);
+    return [newH, total-newH];
+  }
+  return [lamH, lamA];
+}
+
+function computeMatchProbabilities(lamH, lamA, maxGoals=12){
+  let pH=0, pD=0, pA=0;
+  const scoreProbs=[];
+  for(let h=0;h<=maxGoals;h++){
+    for(let a=0;a<=maxGoals;a++){
+      const p = poissonPmf(h,lamH)*poissonPmf(a,lamA);
+      if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p;
+      scoreProbs.push({h,a,p});
+    }
+  }
+  // 打ち切りによる取りこぼし分を按分し、合計がちょうど100%になるようにする
+  const total = pH+pD+pA;
+  if(total>0){ pH/=total; pD/=total; pA/=total; scoreProbs.forEach(s=>s.p/=total); }
+  scoreProbs.sort((x,y)=>y.p-x.p);
+  return {pH, pD, pA, topScores:scoreProbs.slice(0,3)};
+}
+
+
 // ══ 直接対決インデックス ══
 // 予測では残り試合ごとにH2Hを引くため、都度全試合を走査すると膨大な回数になる。
 // 全試合を1度だけ走査して全ペア分を集計しておき、以降は参照するだけにする。
@@ -4505,175 +4408,6 @@ function getPrevSeasonAttackDefense(yr, team){
   return result;
 }
 
-// ── 開幕時の見立ての調整（A：部門間の補正／B：強さ係数の自動調整） ──
-const STRENGTH_K_DEFAULT = 1.5; // 過去データで調整できないときの強さ係数
-let strengthK = STRENGTH_K_DEFAULT; // 事前の攻守力を何乗するか（1＝補正なし、大きいほどチーム間の差が広がる）
-let useDivFactors = true;
-let calib = null;      // 自動調整の結果 {sig, k, n, rmse, rmseBefore}
-let _divFactors = null, _divFactorsSig = null;
-
-function playedSignature(){
-  let n=0, g=0;
-  Object.values(db.seasons||{}).forEach(s=>Object.values(s.divisions||{}).forEach(d=>(d.matches||[]).forEach(m=>{ if(m.played){ n++; g+=m.home_score*3+m.away_score; } })));
-  return `${eloDataSignature()}|${n}|${g}`;
-}
-
-// そのシーズンより前で、チームが最後に在籍していた部門
-function findPrevDiv(yr, team){
-  const seasons = getSeasons(); // 新しい順
-  const idx = seasons.indexOf(String(yr));
-  if(idx<0) return null;
-  for(let k=idx+1;k<seasons.length;k++){
-    for(const pd of [1,2,3]){
-      if(getDivData(seasons[k], pd)?.teams?.includes(team)) return pd;
-    }
-  }
-  return null;
-}
-
-// 部門間の実力差を、過去に昇格・降格したチームの「移った前後の攻守力の変化」から推定する。
-// 返り値 {b: {att, def, n}} … b部とb+1部の境目を「上に移った」ときの倍率（下に移ったときは逆数）
-const DIV_FACTOR_PRIOR = {att:0.85, def:1.18}; // データが少ないときの目安
-const DIV_FACTOR_PRIOR_N = 4;                   // 目安をサンプル何件ぶんとして扱うか
-function getDivFactors(){
-  const sig = playedSignature();
-  if(_divFactors && _divFactorsSig===sig) return _divFactors;
-  const seasons = getSeasons().slice().reverse(); // 古い順
-  const acc = {1:{la:0,ld:0,n:0}, 2:{la:0,ld:0,n:0}};
-  for(let i=1;i<seasons.length;i++){
-    const P=seasons[i-1], N=seasons[i];
-    [1,2,3].forEach(dN=>{
-      (getDivData(N,dN)?.teams||[]).forEach(t=>{
-        const dP=[1,2,3].find(x=>getDivData(P,x)?.teams?.includes(t));
-        if(!dP || Math.abs(dP-dN)!==1) return;
-        const a=getRawAttackDefense(P,dP,t), b=getRawAttackDefense(N,dN,t);
-        if(!a||!b||a.games<10||b.games<10) return;
-        const sign = dN<dP ? 1 : -1; // 昇格なら+1、降格なら向きを反転して同じ向きにそろえる
-        const bd = Math.min(dP,dN);
-        acc[bd].la += sign*Math.log(b.attack/a.attack);
-        acc[bd].ld += sign*Math.log(b.defense/a.defense);
-        acc[bd].n++;
-      });
-    });
-  }
-  const out={};
-  [1,2].forEach(bd=>{
-    const x=acc[bd], n0=DIV_FACTOR_PRIOR_N;
-    out[bd]={ att:Math.exp((x.la + n0*Math.log(DIV_FACTOR_PRIOR.att))/(x.n+n0)),
-              def:Math.exp((x.ld + n0*Math.log(DIV_FACTOR_PRIOR.def))/(x.n+n0)), n:x.n };
-  });
-  _divFactors=out; _divFactorsSig=sig;
-  return out;
-}
-function divFactorFor(fromDiv, toDiv){
-  const F=getDivFactors(); let att=1, def=1;
-  if(toDiv<fromDiv){ for(let b=toDiv;b<fromDiv;b++){ att*=F[b].att; def*=F[b].def; } }
-  else { for(let b=fromDiv;b<toDiv;b++){ att/=F[b].att; def/=F[b].def; } }
-  return {att, def};
-}
-
-// 「そのシーズンの結果がまだ1試合も入っていない状態」を一時的に再現して fn を実行する
-// （以降のシーズンと、その年のカップ戦も除く）
-function withPreseasonDb(yr, fn){
-  yr = String(yr);
-  const real = db;
-  const order = getSeasonOrder(yr);
-  const clone = Object.assign({}, real, { seasons:{}, cups:{} });
-  Object.keys(real.seasons).forEach(y=>{
-    if(y===yr){
-      const divs={};
-      Object.entries(real.seasons[y].divisions||{}).forEach(([k,dd])=>{
-        divs[k] = Object.assign({}, dd, { matches:(dd.matches||[]).map(m=>{ const c=Object.assign({}, m, {home_score:null, away_score:null, played:false}); delete c.playedAt; return c; }) });
-      });
-      clone.seasons[y] = Object.assign({}, real.seasons[y], { divisions:divs });
-    } else if(getSeasonOrder(y)<order) clone.seasons[y] = real.seasons[y];
-  });
-  Object.keys(real.cups||{}).forEach(y=>{ if(y!==yr && getSeasonOrder(y)<order) clone.cups[y]=real.cups[y]; });
-  db = clone;
-  invalidateEloCache();
-  try{ return fn(); }
-  finally{ db = real; invalidateEloCache(); }
-}
-
-function isDivFinished(yr,div){ const d=getDivData(yr,div); return !!d && d.matches.length>0 && d.matches.every(m=>m.played); }
-
-// 残り試合の期待勝点（シミュレーションの平均と同じ値を、確率から直接計算する）
-function expectedPtsFromLambdas(info){
-  const pts={};
-  info.teams.forEach(t=>pts[t]=info.baseStats[t].pts);
-  const ph=new Float64Array(11), pa=new Float64Array(11);
-  info.matchLambdas.forEach(({home,away,lamH,lamA})=>{
-    ph[0]=Math.exp(-lamH); pa[0]=Math.exp(-lamA);
-    for(let k=1;k<=10;k++){ ph[k]=ph[k-1]*lamH/k; pa[k]=pa[k-1]*lamA/k; }
-    let pH=0,pD=0,pA=0;
-    for(let h=0;h<=10;h++) for(let a=0;a<=10;a++){ const p=ph[h]*pa[a]; if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p; }
-    const t=pH+pD+pA;
-    pts[home]+=(3*pH+pD)/t; pts[away]+=(3*pA+pD)/t;
-  });
-  return pts;
-}
-
-// 【B】過去の完了済みシーズンで「開幕時の予想勝点」と実際の最終勝点を突き合わせ、誤差が最小になる強さ係数を選ぶ
-// 調整に使うのは全日程を終えた部門だけなので、今季の結果を入力しても再計算しない
-function calibSignature(){
-  const parts=[];
-  getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
-    if(!isDivFinished(yr,div)) return;
-    let g=0; getDivData(yr,div).matches.forEach(m=>{ g+=m.home_score*7+m.away_score*3+m.round; });
-    parts.push(`${yr}:${div}:${g}`);
-  }));
-  return `${getSeasons().join(',')}|${parts.join(',')}`;
-}
-function calibrateStrength(){
-  const sig = calibSignature();
-  if(calib && calib.sig===sig){ strengthK = calib.k; return calib; }
-  if(db.predCalib && db.predCalib.sig===sig){ calib = db.predCalib; strengthK = calib.k; return calib; }
-  const samples=[];
-  const asc = getSeasons().slice().reverse();
-  asc.forEach((yr,i)=>{ if(i===0) return; [1,2,3].forEach(div=>{ if(isDivFinished(yr,div)) samples.push({yr,div,actual:Object.fromEntries(calcStandings(yr,div).map(r=>[r.team,r.pts]))}); }); });
-  samples.splice(0, Math.max(0, samples.length-6)); // 直近6件（部門ごとのシーズン）に絞る
-  if(!samples.length){ calib={sig,k:STRENGTH_K_DEFAULT,n:0}; strengthK=calib.k; return calib; }
-
-  // 設定（強さ係数・部門補正の有無）の組ごとに誤差を出す。シーズンの複製はサンプル1件につき1回で済ませる
-  const evalMany=(configs)=>{
-    const e=configs.map(()=>0); let cnt=0;
-    samples.forEach(sm=>{
-      withPreseasonDb(sm.yr, ()=>{
-        configs.forEach(([k,divOn],ci)=>{
-          strengthK=k; useDivFactors=divOn;
-          const exp=expectedPtsFromLambdas(predictStandings(sm.yr, sm.div, 0, {lambdasOnly:true}));
-          Object.keys(sm.actual).forEach(t=>{ if(exp[t]!==undefined){ e[ci]+=(exp[t]-sm.actual[t])**2; if(ci===0) cnt++; } });
-        });
-      });
-    });
-    return e.map(v=>Math.sqrt(v/Math.max(1,cnt)));
-  };
-  try{
-    const grid=[0.8,1.0,1.25,1.5,1.8,2.2,2.7];
-    const v=evalMany([...grid.map(k=>[k,true]), [1,false]]);
-    const rBefore=v.pop();
-    // 最小の点の前後を放物線でつないで、格子の間の最適値を推定する
-    const i=v.indexOf(Math.min(...v));
-    let best=grid[i];
-    if(i>0 && i<grid.length-1){
-      const [x0,x1,x2]=[grid[i-1],grid[i],grid[i+1]], [y0,y1,y2]=[v[i-1],v[i],v[i+1]];
-      const den=(x0-x1)*(x0-x2)*(x1-x2);
-      const A=(x2*(y1-y0)+x1*(y0-y2)+x0*(y2-y1))/den, B=(x2*x2*(y0-y1)+x1*x1*(y2-y0)+x0*x0*(y1-y2))/den;
-      if(A>0) best=Math.max(x0, Math.min(x2, -B/(2*A)));
-    }
-    const n=samples.length;
-    const kFinal=Math.round(((n*best + 2*STRENGTH_K_DEFAULT)/(n+2))*20)/20;
-    // 誤差の表示用：最終値に一番近い格子点の値を使う（追加の計算をしない）
-    const near=grid.reduce((p,c)=>Math.abs(c-kFinal)<Math.abs(p-kFinal)?c:p);
-    calib={ sig, k:kFinal, n, rmse:v[grid.indexOf(near)], rmseBefore:rBefore };
-    db.predCalib = calib; save(db);
-  } finally {
-    useDivFactors=true;
-  }
-  strengthK=calib.k;
-  return calib;
-}
-
 const EXTREME_SHRINK = 8;   // 【案C】少ない試合数での極端な攻守力を抑える強さ
 const PREV_SEASON_W = 0.7;  // 【案A】今季の実績が薄いとき、前季の攻守力をどれだけ信頼するか
 
@@ -4687,10 +4421,10 @@ function getAttackDefense(yr, div, team, elo){
   const prev = getPrevSeasonAttackDefense(yr, team);
   let baseAttack  = prev ? (PREV_SEASON_W*prev.attack  + (1-PREV_SEASON_W)*attackFromElo)  : attackFromElo;
   let baseDefense = prev ? (PREV_SEASON_W*prev.defense + (1-PREV_SEASON_W)*defenseFromElo) : defenseFromElo;
-  // 【B】事前の見立ては平均に寄りすぎるので、強さ係数（過去シーズンで自動調整）で差を広げる
+  // 【強さ係数】事前の見立ては平均に寄りすぎるので、過去シーズンで自動調整した係数で差を広げる（16節）
   baseAttack  = Math.pow(Math.max(0.05, baseAttack),  strengthK);
   baseDefense = Math.pow(Math.max(0.05, baseDefense), strengthK);
-  // 【A】昇格・降格してきたチームは、部門間の実力差のぶん割り引く／上乗せする
+  // 【部門補正】昇格・降格してきたチームは、部門間の実力差のぶん割り引く／上乗せする（16節）
   const fromDiv = findPrevDiv(yr, team);
   if(useDivFactors && fromDiv && fromDiv!==Number(div)){
     const f = divFactorFor(fromDiv, Number(div));
@@ -4819,17 +4553,8 @@ function predictStandings(yr, div, simulations=20000, opts){
   const playedMatches = d.matches.filter(m=>m.played);
   const remainingMatches = d.matches.filter(m=>!m.played);
 
-  // 現在の実績ポイントを計算
-  const baseStats = {};
-  teams.forEach(t=>baseStats[t]={pts:0,gf:0,ga:0});
-  playedMatches.forEach(m=>{
-    const h=m.home,a=m.away,hs=m.home_score,as_=m.away_score;
-    baseStats[h].gf+=hs; baseStats[h].ga+=as_;
-    baseStats[a].gf+=as_; baseStats[a].ga+=hs;
-    if(hs>as_) baseStats[h].pts+=3;
-    else if(hs<as_) baseStats[a].pts+=3;
-    else { baseStats[h].pts++; baseStats[a].pts++; }
-  });
+  // 現在の実績（勝点・得点・失点）
+  const baseStats = tallyStandings(teams, playedMatches);
 
   if(!remainingMatches.length){
     // 残り試合なし = 確定順位
@@ -4981,27 +4706,14 @@ function predictStandings(yr, div, simulations=20000, opts){
 }
 
 // ══════════════════════════════════
-// 15. 予測タブ：ELO表示／ヒートマップ
+// 15. 予測タブ（ヒートマップ・ELO・攻守力）／次節予想
 // ══════════════════════════════════
 let predictCache = {}; // key: `${yr}-${div}` -> pred結果
-let preseasonCache = {}; // key: `${yr}-${div}` -> {チーム名: シーズン当初の予想勝点}
 let _predRunning = false;
-
-// シーズン当初の予想勝点を求める。
-// 「このシーズンの結果がまだ1試合も入っていない状態」を一時的に再現し（以降のシーズンとこの年のカップ戦も除く）、
-// 通常の予測と同じモデルで全試合をシミュレーションして、最終勝点の平均を取る。
-function predictPreseason(yr, div, simulations=10000){
-  const out = {};
-  withPreseasonDb(yr, ()=>{
-    predictStandings(yr, div, simulations).forEach(r=>{ out[r.team] = {avg:r.avgPts, lo:r.ptsLo, hi:r.ptsHi}; });
-  });
-  return out;
-}
 
 function predictCacheKey(yr, div){ return `${yr}-${div}`; }
 
-// ページを開いた時・タブ/年度切替時に呼ぶ（再計算はしない）
-// 予測タブ内の「予測 / ヒートマップ / 精度検証」切り替え
+// 予測タブ内の表示（ヒートマップ／ELO／攻守力）を切り替える
 let predictSubtab = 'heatmap'; // 予測タブで開いている表示（最初はヒートマップ）
 function switchPredictSubtab(tab){
   predictSubtab = tab;
@@ -5063,8 +4775,6 @@ function renderAttackDefenseRanking(){
   const allRows = getAttackDefenseTableAll();
   if(!allRows.length){ el.innerHTML = '<div class="loading">データなし</div>'; return; }
 
-  const div_names_short = ['','1部','2部','3部'];
-  const divColor = d => ['','var(--d1)','var(--d2)','var(--d3)'][d]||'var(--muted)';
 
   const rows = adFilterDiv===0 ? allRows : allRows.filter(r=>r.curDiv===adFilterDiv);
   const byAttack = [...rows].sort((a,b)=>b.attack-a.attack);
@@ -5097,7 +4807,7 @@ function renderAttackDefenseRanking(){
     const dColor = divColor(r.curDiv);
     html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
       <td style="font-weight:700;color:var(--g);">${r.attack.toFixed(2)}</td>
-      <td style="font-size:11px;color:${dColor};">${r.curDiv?div_names_short[r.curDiv]+r.curRank+'位':'—'}</td></tr>`;
+      <td style="font-size:11px;color:${dColor};">${r.curDiv?divShortName(r.curDiv)+r.curRank+'位':'—'}</td></tr>`;
   });
   html += `</tbody></table></div>`;
 
@@ -5108,7 +4818,7 @@ function renderAttackDefenseRanking(){
     const dColor = divColor(r.curDiv);
     html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
       <td style="font-weight:700;color:#0288d1;">${r.defense.toFixed(2)}</td>
-      <td style="font-size:11px;color:${dColor};">${r.curDiv?div_names_short[r.curDiv]+r.curRank+'位':'—'}</td></tr>`;
+      <td style="font-size:11px;color:${dColor};">${r.curDiv?divShortName(r.curDiv)+r.curRank+'位':'—'}</td></tr>`;
   });
   html += `</tbody></table></div>`;
 
@@ -5145,7 +4855,7 @@ function renderHeatmap(){
   const predByCurrentOrder = [...pred].sort((a,b)=>(currentRankMap[a.team]||999)-(currentRankMap[b.team]||999));
 
   const n = pred.length;
-  const baseColor = ['','229,57,53','0,168,84','2,136,209'][div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
+  const baseColor = DIV_RGB[div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
   const rankBounds = computeRankBounds(yr, div);
 
   let html = `<div class="slbl">順位確率ヒートマップ（${n}チーム×${n}順位）</div>`;
@@ -5156,7 +4866,7 @@ function renderHeatmap(){
   // 開幕前の予想順位（開幕前予測の平均勝点の順）
   const preRank = {};
   Object.keys(pre).sort((a,b)=>pre[b].avg-pre[a].avg).forEach((t,i)=>{ preRank[t]=i+1; });
-  html += `<tr><th class="heatmap-corner"></th><th class="hm-pts hm-range" title="開幕前に80%の確率で収まると見た勝点の幅">開幕前予測</th><th class="hm-pts" title="開幕前の予想順位">予</th><th class="hm-pts" title="現在の予想勝点（ここまでの結果＋残り試合）">現予</th><th class="hm-pts hm-pts-last" title="現在の順位">現</th>`;
+  html += `<tr><th class="heatmap-corner"></th><th class="hm-pts hm-range" title="開幕前に80%の確率で収まると見た勝点の幅">開幕前予測</th><th class="hm-pts" title="現在の予想勝点（ここまでの結果＋残り試合）">現予</th><th class="hm-pts" title="開幕前の予想順位">予</th><th class="hm-pts hm-pts-last" title="現在の順位">現</th>`;
   for(let r=1;r<=n;r++) html += `<th>${r}</th>`;
   html += `</tr>`;
 
@@ -5171,8 +4881,8 @@ function renderHeatmap(){
       const curStyle = above ? 'background:var(--g2);color:var(--g);' : below ? 'background:var(--red2);color:var(--red);' : '';
       const pr0 = preRank[row.team], cr0 = currentRankMap[row.team];
       const rCol = (pr0 && cr0 && pr0!==cr0) ? (cr0<pr0 ? 'color:var(--g);' : 'color:var(--red);') : '';
-      html += `<td class="hm-pts hm-range">${pr?`${pr.lo}–${pr.hi}`:'—'}</td><td class="hm-pts">${pr0||'—'}</td>`
-            + `<td class="hm-pts" style="${curStyle}">${cur!==null?cur:'—'}</td><td class="hm-pts hm-pts-last" style="${rCol}">${cr0||'—'}</td>`;
+      html += `<td class="hm-pts hm-range">${pr?`${pr.lo}–${pr.hi}`:'—'}</td><td class="hm-pts" style="${curStyle}">${cur!==null?cur:'—'}</td>`
+            + `<td class="hm-pts">${pr0||'—'}</td><td class="hm-pts hm-pts-last" style="${rCol}">${cr0||'—'}</td>`;
     }
     const dist = row.rankDist || [];
     const b = rankBounds[row.team] || {best:1, worst:n};
@@ -5200,11 +4910,11 @@ function renderHeatmap(){
   html += `</table></div></div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
     ※ 縦＝チーム（現在の順位順）、横＝最終順位。数値は確率（%）、色が濃いほど可能性が高いことを表します。<br>
-    ※ <b>開幕前予測</b>＝開幕時点の戦力で全試合をシミュレーションし、80%の確率で収まると見た最終勝点の幅、<b>予</b>＝開幕前の予想順位、<b>現予</b>＝ここまでの結果＋残り試合のシミュレーションによる予想最終勝点、<b>現</b>＝現在の順位。<br>
+    ※ <b>開幕前予測</b>＝開幕時点の戦力で全試合をシミュレーションし、80%の確率で収まると見た最終勝点の幅、<b>現予</b>＝ここまでの結果＋残り試合のシミュレーションによる予想最終勝点、<b>予</b>＝開幕前の予想順位、<b>現</b>＝現在の順位。<br>
     ※ 現予に色が付いているチームは開幕前予測の幅から外れています（緑＝上振れ、赤＝下振れ）。現の色は予想順位より上か下かを表します。<br>
     ※ 平均は運の要素が打ち消されるため、実際の勝点の散らばりより狭くなります。当たり外れは「幅に収まったか」で見てください。<br>
     ${calibNoteHtml()}<br>
-    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,#ddd,#ddd 2px,#eee 2px,#eee 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝到達不可能（確定的に無理）<br>
+    <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,var(--zebra-a),var(--zebra-a) 2px,var(--zebra-b) 2px,var(--zebra-b) 4px);vertical-align:middle;margin-right:4px;"></span>網掛け＝到達不可能（確定的に無理）<br>
     <span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,rgba(${baseColor},0.22),rgba(${baseColor},0.22) 2px,rgba(${baseColor},0.06) 2px,rgba(${baseColor},0.06) 4px);vertical-align:middle;margin-right:4px;"></span>薄い網掛け＝理論上は到達しうるが、今回の試行では0%だった順位</p>`;
 
   el.innerHTML = html;
@@ -5267,8 +4977,7 @@ function buildEloTableHtml(){
       const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
       const dColor = r.delta>0?'color:var(--g)':r.delta<0?'color:var(--red)':'color:var(--muted)';
       const dSign = r.delta>0?'+':'';
-      const divColor = r.curDiv ? ['','#e53935','#00a854','#0288d1'][r.curDiv] : 'var(--muted)';
-      const curRankStr = r.curRank ? `<span style="color:${divColor};font-weight:700;">${getDivName(r.curDiv)} ${r.curRank}位</span>` : '<span style="color:var(--muted);">—</span>';
+      const curRankStr = r.curRank ? `<span style="color:${divColor(r.curDiv)};font-weight:700;">${getDivName(r.curDiv)} ${r.curRank}位</span>` : '<span style="color:var(--muted);">—</span>';
       html += `<tr><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}</td>
         <td style="font-weight:700;">${r.rating}</td>
         <td style="${dColor};font-size:12px;">${r.games?dSign+r.delta:'—'}</td>
@@ -5284,7 +4993,325 @@ function buildEloTableHtml(){
   return html;
 }
 
-// ══ 起動処理 ══
+// ══ 次節の勝敗予想 ══
+function renderNextRoundForecast(){
+  const yr = latestSeason();
+  const div = curDiv.matches;
+  const el = document.getElementById('forecast-area');
+  if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
+
+  const d = getDivData(yr, div);
+  if(!d || !d.matches || !d.matches.length){ el.innerHTML='<div class="loading">試合がありません</div>'; return; }
+
+  // 「次節」＝まだ結果が入っていない試合のうち、最も早い節
+  const pending = d.matches.filter(m=>!m.played);
+  if(!pending.length){ el.innerHTML='<div class="loading">全試合が終了しています</div>'; return; }
+  const nextKey = pending
+    .map(m=>({leg:m.leg, round:m.round, cr:getContinuousRound(d.matches, m.leg, m.round)}))
+    .sort((a,b)=>a.cr-b.cr)[0];
+  const nextMatches = pending.filter(m=>m.leg===nextKey.leg && m.round===nextKey.round);
+
+  el.innerHTML = `<div class="loading loading-active">🔮 次節の予想を計算中…</div>`;
+
+  setTimeout(()=>{
+    calibrateStrength();
+    // 予測モデルと同じ期待得点の組み立て方を使う
+    const {elo} = calcAllElo();
+    const teams = d.teams;
+    const ad = {};
+    teams.forEach(t=>{ ad[t] = getAttackDefense(yr, div, t, elo); });
+    const {avgHome, avgAway} = getLeagueAvgGoalsHomeAway(div);
+    const adHA = {};
+    teams.forEach(t=>{ adHA[t] = getHomeAwayAttackDefense(yr, div, t, ad[t], avgHome, avgAway); });
+    const teamHA = computeTeamHomeAdvantages(elo);
+    const leagueHA = teamHA._leagueDefault;
+    const haMultiplier = t => {
+      const diff = (teamHA[t]!==undefined ? teamHA[t] : leagueHA) - leagueHA;
+      return Math.max(0.75, Math.min(1.30, 1 + diff/100 * 0.15));
+    };
+
+    const standings = calcStandings(yr, div);
+    const rankOf = {};
+    standings.forEach(r=>{ rankOf[r.team]=r.rank; });
+
+    let html = `<div class="slbl">🔮 第${nextKey.cr}節 勝敗予想</div>`;
+
+    nextMatches.forEach(m=>{
+      const h=m.home, a=m.away;
+      if(!adHA[h] || !adHA[a]) return;
+
+      let lamH = avgHome * adHA[h].homeAttack * adHA[a].awayDefense;
+      let lamA = avgAway * adHA[a].awayAttack * adHA[h].homeDefense;
+      const hMult = haMultiplier(h);
+      lamH *= hMult;
+      lamA /= Math.max(0.85, hMult);
+
+      // 順位予想と同じ基準で、直近の調子（勝点ペース＋得失点差）を反映する
+      const NEUTRAL_F = 1.3, K_FORM_F = 0.45, K_GD_F = 0.04;
+      const formMult = (t)=>{
+        let mm = 1;
+        if(t.recentAvg!=null) mm *= (1 + (t.recentAvg-NEUTRAL_F)*K_FORM_F/3);
+        if(t.recentGd!=null)  mm *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD_F);
+        return Math.max(0.7, Math.min(1.4, mm));
+      };
+      lamH *= formMult(getTeamTendency(yr, div, h));
+      lamA *= formMult(getTeamTendency(yr, div, a));
+
+      const h2h = getH2HStats(h, a);
+      if(h2h && h2h.total>=2){
+        const blend = Math.min(0.25, h2h.total*0.03);
+        lamH = lamH*(1-blend) + h2h.aAvgGoals*blend;
+        lamA = lamA*(1-blend) + h2h.bAvgGoals*blend;
+      }
+      lamH = Math.max(0.15, Math.min(5.0, lamH));
+      lamA = Math.max(0.15, Math.min(5.0, lamA));
+      [lamH, lamA] = balanceLambdas(lamH, lamA);
+
+      const {pH, pD, pA, topScores} = computeMatchProbabilities(lamH, lamA);
+      const pHp = Math.round(pH*100), pDp = Math.round(pD*100), pAp = Math.round(pA*100);
+
+      // 直近フォーム
+      const formH = getRecentForm(yr, div, h, 5);
+      const formA = getRecentForm(yr, div, a, 5);
+      const formHtml = form => form.length
+        ? form.map(f=>{
+            const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
+            return `<span class="form-dot" style="background:${bg};width:13px;height:13px;font-size:8px;margin-right:2px;">${f.result}</span>`;
+          }).join('')
+        : '<span style="color:var(--muted);font-size:9px;">—</span>';
+
+      html += `<div class="card"><div class="card-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="flex:1;text-align:right;">
+            <div style="font-size:13px;font-weight:700;">${h}</div>
+            <div style="font-size:9px;color:var(--muted);">${rankOf[h]?rankOf[h]+'位':''} ・ ホーム</div>
+            <div style="margin-top:3px;">${formHtml(formH)}</div>
+          </div>
+          <div style="flex:0 0 auto;font-size:11px;color:var(--muted);font-weight:700;">vs</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;">${a}</div>
+            <div style="font-size:9px;color:var(--muted);">${rankOf[a]?rankOf[a]+'位':''} ・ アウェイ</div>
+            <div style="margin-top:3px;">${formHtml(formA)}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;font-size:10px;font-weight:700;color:#fff;">
+          <div style="width:${pHp}%;background:var(--g);display:flex;align-items:center;justify-content:center;">${pHp>=12?pHp+'%':''}</div>
+          <div style="width:${pDp}%;background:var(--gold);display:flex;align-items:center;justify-content:center;">${pDp>=12?pDp+'%':''}</div>
+          <div style="width:${pAp}%;background:var(--red);display:flex;align-items:center;justify-content:center;">${pAp>=12?pAp+'%':''}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:3px;">
+          <span>ホーム勝ち ${pHp}%</span><span>引き分け ${pDp}%</span><span>アウェイ勝ち ${pAp}%</span>
+        </div>
+
+        <div style="margin-top:8px;font-size:10px;color:var(--muted);">
+          予想スコア：${topScores.map(s=>`<strong style="color:var(--text);">${s.h}-${s.a}</strong>(${Math.round(s.p*100)}%)`).join(' ／ ')}
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">
+          期待得点：${lamH.toFixed(2)} - ${lamA.toFixed(2)}
+        </div>
+      </div></div>`;
+    });
+
+    html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
+      ※ ELO・ホーム/アウェイ別の攻守力・チーム固有のホームアドバンテージ・直接対決成績をもとに、ポアソン分布で算出した確率です。
+    </p>`;
+
+    el.innerHTML = html;
+  }, 30);
+}
+
+// ══════════════════════════════════
+// 16. 開幕前予測（強さ係数の自動調整・部門間の補正）
+// ══════════════════════════════════
+// 開幕前の見立ては、前季の成績とELOから作る「事前の攻守力」で決まる。そのままだと
+//  ・昇格／降格したチームの前季成績が、部門の違いを無視して引き継がれる
+//  ・前季成績とELOを混ぜる過程でチーム間の差が縮み、全チームが平均に寄る
+// ので、【部門補正】と【強さ係数】で直す。強さ係数は過去の完了済みシーズンで答え合わせして自動で決める。
+let preseasonCache = {}; // key: `${yr}-${div}` -> {k, sig, data:{チーム名: {avg, lo, hi}}}（開幕前予測）
+const STRENGTH_K_DEFAULT = 1.5; // 過去データで調整できないときの強さ係数
+let strengthK = STRENGTH_K_DEFAULT; // 事前の攻守力を何乗するか（1＝補正なし、大きいほどチーム間の差が広がる）
+let useDivFactors = true;
+let calib = null;      // 自動調整の結果 {sig, k, n, rmse, rmseBefore}
+let _divFactors = null, _divFactorsSig = null;
+
+function playedSignature(){
+  let n=0, g=0;
+  Object.values(db.seasons||{}).forEach(s=>Object.values(s.divisions||{}).forEach(d=>(d.matches||[]).forEach(m=>{ if(m.played){ n++; g+=m.home_score*3+m.away_score; } })));
+  return `${eloDataSignature()}|${n}|${g}`;
+}
+
+// そのシーズンより前で、チームが最後に在籍していた部門
+function findPrevDiv(yr, team){
+  const seasons = getSeasons(); // 新しい順
+  const idx = seasons.indexOf(String(yr));
+  if(idx<0) return null;
+  for(let k=idx+1;k<seasons.length;k++){
+    for(const pd of [1,2,3]){
+      if(getDivData(seasons[k], pd)?.teams?.includes(team)) return pd;
+    }
+  }
+  return null;
+}
+
+// 部門間の実力差を、過去に昇格・降格したチームの「移った前後の攻守力の変化」から推定する。
+// 返り値 {b: {att, def, n}} … b部とb+1部の境目を「上に移った」ときの倍率（下に移ったときは逆数）
+const DIV_FACTOR_PRIOR = {att:0.85, def:1.18}; // データが少ないときの目安
+const DIV_FACTOR_PRIOR_N = 4;                   // 目安をサンプル何件ぶんとして扱うか
+function getDivFactors(){
+  const sig = playedSignature();
+  if(_divFactors && _divFactorsSig===sig) return _divFactors;
+  const seasons = getSeasons().slice().reverse(); // 古い順
+  const acc = {1:{la:0,ld:0,n:0}, 2:{la:0,ld:0,n:0}};
+  for(let i=1;i<seasons.length;i++){
+    const P=seasons[i-1], N=seasons[i];
+    [1,2,3].forEach(dN=>{
+      (getDivData(N,dN)?.teams||[]).forEach(t=>{
+        const dP=[1,2,3].find(x=>getDivData(P,x)?.teams?.includes(t));
+        if(!dP || Math.abs(dP-dN)!==1) return;
+        const a=getRawAttackDefense(P,dP,t), b=getRawAttackDefense(N,dN,t);
+        if(!a||!b||a.games<10||b.games<10) return;
+        const sign = dN<dP ? 1 : -1; // 昇格なら+1、降格なら向きを反転して同じ向きにそろえる
+        const bd = Math.min(dP,dN);
+        acc[bd].la += sign*Math.log(b.attack/a.attack);
+        acc[bd].ld += sign*Math.log(b.defense/a.defense);
+        acc[bd].n++;
+      });
+    });
+  }
+  const out={};
+  [1,2].forEach(bd=>{
+    const x=acc[bd], n0=DIV_FACTOR_PRIOR_N;
+    out[bd]={ att:Math.exp((x.la + n0*Math.log(DIV_FACTOR_PRIOR.att))/(x.n+n0)),
+              def:Math.exp((x.ld + n0*Math.log(DIV_FACTOR_PRIOR.def))/(x.n+n0)), n:x.n };
+  });
+  _divFactors=out; _divFactorsSig=sig;
+  return out;
+}
+function divFactorFor(fromDiv, toDiv){
+  const F=getDivFactors(); let att=1, def=1;
+  if(toDiv<fromDiv){ for(let b=toDiv;b<fromDiv;b++){ att*=F[b].att; def*=F[b].def; } }
+  else { for(let b=fromDiv;b<toDiv;b++){ att/=F[b].att; def/=F[b].def; } }
+  return {att, def};
+}
+
+// 「そのシーズンの結果がまだ1試合も入っていない状態」を一時的に再現して fn を実行する
+// （以降のシーズンと、その年のカップ戦も除く）
+function withPreseasonDb(yr, fn){
+  yr = String(yr);
+  const real = db;
+  const order = getSeasonOrder(yr);
+  const clone = Object.assign({}, real, { seasons:{}, cups:{} });
+  Object.keys(real.seasons).forEach(y=>{
+    if(y===yr){
+      const divs={};
+      Object.entries(real.seasons[y].divisions||{}).forEach(([k,dd])=>{
+        divs[k] = Object.assign({}, dd, { matches:(dd.matches||[]).map(m=>{ const c=Object.assign({}, m, {home_score:null, away_score:null, played:false}); delete c.playedAt; return c; }) });
+      });
+      clone.seasons[y] = Object.assign({}, real.seasons[y], { divisions:divs });
+    } else if(getSeasonOrder(y)<order) clone.seasons[y] = real.seasons[y];
+  });
+  Object.keys(real.cups||{}).forEach(y=>{ if(y!==yr && getSeasonOrder(y)<order) clone.cups[y]=real.cups[y]; });
+  db = clone;
+  invalidateEloCache();
+  try{ return fn(); }
+  finally{ db = real; invalidateEloCache(); }
+}
+
+function isDivFinished(yr,div){ const d=getDivData(yr,div); return !!d && d.matches.length>0 && d.matches.every(m=>m.played); }
+
+// 残り試合の期待勝点（シミュレーションの平均と同じ値を、確率から直接計算する）
+function expectedPtsFromLambdas(info){
+  const pts={};
+  info.teams.forEach(t=>pts[t]=info.baseStats[t].pts);
+  const ph=new Float64Array(11), pa=new Float64Array(11);
+  info.matchLambdas.forEach(({home,away,lamH,lamA})=>{
+    ph[0]=Math.exp(-lamH); pa[0]=Math.exp(-lamA);
+    for(let k=1;k<=10;k++){ ph[k]=ph[k-1]*lamH/k; pa[k]=pa[k-1]*lamA/k; }
+    let pH=0,pD=0,pA=0;
+    for(let h=0;h<=10;h++) for(let a=0;a<=10;a++){ const p=ph[h]*pa[a]; if(h>a) pH+=p; else if(h<a) pA+=p; else pD+=p; }
+    const t=pH+pD+pA;
+    pts[home]+=(3*pH+pD)/t; pts[away]+=(3*pA+pD)/t;
+  });
+  return pts;
+}
+
+// 【強さ係数】過去の完了済みシーズンで「開幕時の予想勝点」と実際の最終勝点を突き合わせ、誤差が最小になる強さ係数を選ぶ
+// 調整に使うのは全日程を終えた部門だけなので、今季の結果を入力しても再計算しない
+function calibSignature(){
+  const parts=[];
+  getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
+    if(!isDivFinished(yr,div)) return;
+    let g=0; getDivData(yr,div).matches.forEach(m=>{ g+=m.home_score*7+m.away_score*3+m.round; });
+    parts.push(`${yr}:${div}:${g}`);
+  }));
+  return `${getSeasons().join(',')}|${parts.join(',')}`;
+}
+function calibrateStrength(){
+  const sig = calibSignature();
+  if(calib && calib.sig===sig){ strengthK = calib.k; return calib; }
+  if(db.predCalib && db.predCalib.sig===sig){ calib = db.predCalib; strengthK = calib.k; return calib; }
+  const samples=[];
+  const asc = getSeasons().slice().reverse();
+  asc.forEach((yr,i)=>{ if(i===0) return; [1,2,3].forEach(div=>{ if(isDivFinished(yr,div)) samples.push({yr,div,actual:Object.fromEntries(calcStandings(yr,div).map(r=>[r.team,r.pts]))}); }); });
+  samples.splice(0, Math.max(0, samples.length-6)); // 直近6件（部門ごとのシーズン）に絞る
+  if(!samples.length){ calib={sig,k:STRENGTH_K_DEFAULT,n:0}; strengthK=calib.k; return calib; }
+
+  // 設定（強さ係数・部門補正の有無）の組ごとに誤差を出す。シーズンの複製はサンプル1件につき1回で済ませる
+  const evalMany=(configs)=>{
+    const e=configs.map(()=>0); let cnt=0;
+    samples.forEach(sm=>{
+      withPreseasonDb(sm.yr, ()=>{
+        configs.forEach(([k,divOn],ci)=>{
+          strengthK=k; useDivFactors=divOn;
+          const exp=expectedPtsFromLambdas(predictStandings(sm.yr, sm.div, 0, {lambdasOnly:true}));
+          Object.keys(sm.actual).forEach(t=>{ if(exp[t]!==undefined){ e[ci]+=(exp[t]-sm.actual[t])**2; if(ci===0) cnt++; } });
+        });
+      });
+    });
+    return e.map(v=>Math.sqrt(v/Math.max(1,cnt)));
+  };
+  try{
+    const grid=[0.8,1.0,1.25,1.5,1.8,2.2,2.7];
+    const v=evalMany([...grid.map(k=>[k,true]), [1,false]]);
+    const rBefore=v.pop();
+    // 最小の点の前後を放物線でつないで、格子の間の最適値を推定する
+    const i=v.indexOf(Math.min(...v));
+    let best=grid[i];
+    if(i>0 && i<grid.length-1){
+      const [x0,x1,x2]=[grid[i-1],grid[i],grid[i+1]], [y0,y1,y2]=[v[i-1],v[i],v[i+1]];
+      const den=(x0-x1)*(x0-x2)*(x1-x2);
+      const A=(x2*(y1-y0)+x1*(y0-y2)+x0*(y2-y1))/den, B=(x2*x2*(y0-y1)+x1*x1*(y2-y0)+x0*x0*(y1-y2))/den;
+      if(A>0) best=Math.max(x0, Math.min(x2, -B/(2*A)));
+    }
+    const n=samples.length;
+    const kFinal=Math.round(((n*best + 2*STRENGTH_K_DEFAULT)/(n+2))*20)/20;
+    // 誤差の表示用：最終値に一番近い格子点の値を使う（追加の計算をしない）
+    const near=grid.reduce((p,c)=>Math.abs(c-kFinal)<Math.abs(p-kFinal)?c:p);
+    calib={ sig, k:kFinal, n, rmse:v[grid.indexOf(near)], rmseBefore:rBefore };
+    db.predCalib = calib; save(db);
+  } finally {
+    useDivFactors=true;
+  }
+  strengthK=calib.k;
+  return calib;
+}
+
+// 開幕前予測：開幕時点の状態を再現してシミュレーションし、チームごとの平均勝点と80%の幅を返す。
+// 「このシーズンの結果がまだ1試合も入っていない状態」を一時的に再現し（以降のシーズンとこの年のカップ戦も除く）、
+// 通常の予測と同じモデルで全試合をシミュレーションして、最終勝点の平均を取る。
+function predictPreseason(yr, div, simulations=10000){
+  const out = {};
+  withPreseasonDb(yr, ()=>{
+    predictStandings(yr, div, simulations).forEach(r=>{ out[r.team] = {avg:r.avgPts, lo:r.ptsLo, hi:r.ptsHi}; });
+  });
+  return out;
+}
+
+
+// ══════════════════════════════════
+// 17. 起動処理
+// ══════════════════════════════════
 // IndexedDBを開き、保存済みデータがあればそれを読み込んでからアプリを初期化する。
 // 初回起動時は、これまでlocalStorageに入っていたデータをIndexedDBへ引き継ぐ。
 async function boot(){
