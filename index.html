@@ -248,6 +248,8 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 .heatmap-tbl th.hm-pts{color:var(--muted);font-size:9px;}
 .heatmap-tbl .hm-pts-last{border-right:2px solid var(--border);}
 .heatmap-tbl th.hm-range,.heatmap-tbl td.hm-range{width:52px;min-width:52px;max-width:52px;font-size:9px;font-weight:400;color:var(--muted);}
+.home-round{display:flex;gap:6px;align-items:center;padding:0 12px 8px;}
+.home-round select{flex:1;min-width:0;font-size:13px;padding:6px 8px;}
 </style>
 </head>
 <body>
@@ -264,6 +266,11 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   <div class="tabs" style="padding-top:0;">
     <div class="tab active" id="stview-tab-detail" onclick="switchStandingsView('detail')">📋 詳細</div>
     <div class="tab" id="stview-tab-form" onclick="switchStandingsView('form')">📈 直近5試合</div>
+  </div>
+  <div class="home-round">
+    <button class="rstep" onclick="stepHomeRound(-1)" aria-label="前の節の時点へ">◀</button>
+    <select id="home-round" onchange="loadStandings()" aria-label="何節終了時点の順位を表示するか"><option value="">最新</option></select>
+    <button class="rstep" onclick="stepHomeRound(1)" aria-label="次の節の時点へ">▶</button>
   </div>
   <div id="standings-area"><div class="loading">データなし</div></div>
 </div>
@@ -927,18 +934,51 @@ function tallyStandings(teams, matches){
   });
   return s;
 }
+// 結果が入った試合のうち、通し節番号が upto 以下のもの（upto が空なら全部）
+function playedUpTo(d, upto){
+  const ms = (d?.matches||[]).filter(m=>m.played);
+  if(!upto) return ms;
+  return ms.filter(m=>getContinuousRound(d.matches, m.leg, m.round) <= upto);
+}
+// 結果が1試合以上入っている節（通し節番号、昇順）
+function playedRounds(d){
+  return [...new Set((d?.matches||[]).filter(m=>m.played).map(m=>getContinuousRound(d.matches, m.leg, m.round)))].sort((a,b)=>a-b);
+}
 // 順位の並べ方（勝点→得失点差→総得点）
 function sortStandings(tally){
   return Object.values(tally).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
 }
-function calcStandings(yr,div){ yr=String(yr);
+// upto（通し節番号）を渡すと、その節までの結果で順位を出す
+function calcStandings(yr,div,upto=null){ yr=String(yr);
   const d = getDivData(yr,div);
   if(!d) return [];
-  return sortStandings(tallyStandings(d.teams, d.matches)).map((r,i)=>({...r,rank:i+1}));
+  return sortStandings(tallyStandings(d.teams, playedUpTo(d, upto))).map((r,i)=>({...r,rank:i+1}));
 }
 
 // ══ 順位表（ホーム） ══
 let standingsView = 'detail'; // 'detail' | 'form'
+// 「何節終了時点」の選択肢を、その部門で結果が入っている節に合わせて作り直す。選んでいた節がまだあれば維持する
+function refreshHomeRoundSelect(d){
+  const sel = document.getElementById('home-round');
+  const rounds = playedRounds(d);
+  const keep = sel.value;
+  const last = rounds[rounds.length-1];
+  sel.innerHTML = `<option value="">最新${last?`（第${last}節まで）`:''}</option>` + rounds.slice(0,-1).reverse().map(r=>`<option value="${r}">第${r}節終了時点</option>`).join('');
+  sel.value = rounds.slice(0,-1).includes(Number(keep)) ? keep : '';
+  return sel.value ? Number(sel.value) : null;
+}
+// ◀ ▶ で1節ずつ前後へ（最終節の時点＝「最新」）
+function stepHomeRound(delta){
+  const d = getDivData(document.getElementById('home-yr').value, curDiv.home);
+  const rounds = playedRounds(d);
+  if(rounds.length<2) return;
+  const sel = document.getElementById('home-round');
+  const curIdx = sel.value ? rounds.indexOf(Number(sel.value)) : rounds.length-1;
+  const next = Math.max(0, Math.min(rounds.length-1, curIdx+delta));
+  sel.value = next===rounds.length-1 ? '' : String(rounds[next]);
+  loadStandings();
+}
+
 function switchStandingsView(view){
   standingsView = view;
   document.getElementById('stview-tab-detail').classList.toggle('active', view==='detail');
@@ -949,10 +989,10 @@ function switchStandingsView(view){
 // 指定チームの直近N試合の結果を、新しい順ではなく「古い→新しい」の順で返す
 // 前節終了時点の順位を計算し、現在の順位との差（変動）を返す。
 // 「消化した試合のうち最新の1節分を取り除いた状態」での順位表と比較する。
-function getRankMovements(yr, div){
+function getRankMovements(yr, div, upto=null){
   const d = getDivData(yr, div);
   if(!d || !d.matches) return {};
-  const played = d.matches.filter(m=>m.played);
+  const played = playedUpTo(d, upto);
   if(!played.length) return {};
 
   // 最新の節（通し節番号が最大のもの）を特定
@@ -965,7 +1005,7 @@ function getRankMovements(yr, div){
   const prevRank = {};
   prevRanked.forEach((r,i)=>{ prevRank[r.team]=i+1; });
 
-  const cur = calcStandings(yr, div);
+  const cur = calcStandings(yr, div, upto);
   const moves = {};
   cur.forEach(r=>{
     if(prevRank[r.team]!==undefined) moves[r.team] = prevRank[r.team] - r.rank; // 正なら順位上昇
@@ -973,11 +1013,11 @@ function getRankMovements(yr, div){
   return moves;
 }
 
-function getRecentForm(yr, div, team, n=5){
+function getRecentForm(yr, div, team, n=5, upto=null){
   const d = getDivData(yr, div);
   if(!d || !d.matches) return [];
-  const played = d.matches
-    .filter(m=>m.played && (m.home===team || m.away===team))
+  const played = playedUpTo(d, upto)
+    .filter(m=>m.home===team || m.away===team)
     .sort((a,b)=>(a.playedAt||0)-(b.playedAt||0) || a.leg-b.leg || a.round-b.round || a.id-b.id);
   return played.slice(-n).map(m=>{
     const isHome = m.home===team;
@@ -996,10 +1036,11 @@ function loadStandings(){
   const yr = document.getElementById('home-yr').value;
   const div = curDiv.home;
   if(!yr){ document.getElementById('standings-area').innerHTML='<div class="loading">年度がありません</div>'; return; }
-  const rows = calcStandings(yr, div);
   const d = getDivData(yr, div);
+  const upto = refreshHomeRoundSelect(d); // 何節終了時点で見るか（null＝最新）
+  const rows = calcStandings(yr, div, upto);
   const matches = d?.matches||[];
-  const done = matches.filter(m=>m.played).length;
+  const done = playedUpTo(d, upto).length;
   const total = matches.length;
   const pN = d?.promoteN||1, rN = d?.relegateN||1;
   const poEnabled = d?.playoff?.enabled;
@@ -1012,7 +1053,7 @@ function loadStandings(){
   html+=`<div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${total?done/total*100:0}%;background:${color}"></div></div><div class="prog-txt">${done}/${total} 試合</div></div>`;
   if(!rows.length){ html+='<div class="loading">データなし</div>'; document.getElementById('standings-area').innerHTML=html; return; }
 
-  const moves = getRankMovements(yr, div);
+  const moves = getRankMovements(yr, div, upto);
 
   const rowMeta = (i) => {
     const isP = div!==1 && i<pN;
@@ -1047,7 +1088,7 @@ function loadStandings(){
     html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>勝点</th><th>直近5試合（古→新）</th></tr></thead><tbody>`;
     rows.forEach((r,i)=>{
       const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
-      const form = getRecentForm(yr, div, r.team, 5);
+      const form = getRecentForm(yr, div, r.team, 5, upto);
       const formHtml = form.length
         ? form.map(f=>{
             const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
@@ -1063,7 +1104,7 @@ function loadStandings(){
     html+=`</tbody></table></div></div>`;
     html+=`<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
       ※ 左が古い試合、右が最新です。<span style="color:var(--g);font-weight:700;">W</span>=勝ち／<span style="color:var(--gold);font-weight:700;">D</span>=引き分け／<span style="color:var(--red);font-weight:700;">L</span>=負け。<br>
-      ※ 順位の横の▲▼は前節からの変動です。
+      ※ 順位の横の▲▼は前節からの変動です。${upto?`<br>※ 第${upto}節終了時点の順位です（それ以前の節の延期分も、結果が入っていれば含みます）。`:''}
     </p>`;
   } else {
     // ── 詳細表示モード ──
@@ -1076,7 +1117,7 @@ function loadStandings(){
     });
     html+=`</tbody></table></div></div>`;
     html+=`<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-      ※ 順位の横の▲▼は前節からの変動です。
+      ※ 順位の横の▲▼は前節からの変動です。${upto?`<br>※ 第${upto}節終了時点の順位です（それ以前の節の延期分も、結果が入っていれば含みます）。`:''}
     </p>`;
   }
   document.getElementById('standings-area').innerHTML=html;
