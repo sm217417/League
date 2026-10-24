@@ -3221,14 +3221,17 @@ function drawIsChart(snaps,allTeams){
   const valueOf = (s,t) => byPts ? s.pts[t] : s.ranks[t];
   const xs=i=>pl+gw*i/Math.max(n-1,1);
 
-  // 縦軸：順位は1位が上、勝点は0が下。勝点の目盛りは最大値に合わせて5・10・20刻みから選ぶ
+  // 縦軸：順位は1位が上、勝点は0が下。勝点の上端は1位チームの勝点ちょうどにし、
+  // 目盛りは5・10・20…刻みで引いたうえで、上端（1位の勝点）にも線と数値を付ける
   let ys, ticks;
   if(byPts){
-    const maxPts = Math.max(3, ...snaps.flatMap(s=>allTeams.map(t=>s.pts[t]||0)));
-    const step = [5,10,20,30,50].find(st=>maxPts/st<=8) || 100;
-    const top = Math.ceil(maxPts/step)*step;
+    const top = Math.max(1, ...snaps.flatMap(s=>allTeams.map(t=>s.pts[t]||0)));
+    const step = [5,10,20,30,50].find(st=>top/st<=8) || 100;
     ys = v => pt + gh*(1 - v/top);
-    ticks = []; for(let v=0; v<=top; v+=step) ticks.push({v, label:`${v}`});
+    ticks = []; for(let v=0; v<top; v+=step) ticks.push({v, label:`${v}`});
+    // 上端の数値が1つ下の目盛りと近すぎるときは、その目盛りを省いて重なりを防ぐ
+    if(ticks.length>1 && (top - ticks[ticks.length-1].v) < step*0.4) ticks.pop();
+    ticks.push({v:top, label:`${top}`});
   } else {
     ys = r => pt + gh*(r-1)/Math.max(nt-1,1);
     ticks = []; for(let r=1;r<=nt;r++) ticks.push({v:r, label:`${r}位`});
