@@ -3095,7 +3095,9 @@ function computeInseasonSnapshots(yr, div){
     const sub = played.filter(m => (m.leg<l) || (m.leg===l && m.round<=r));
     const ranked = sortStandings(tallyStandings(allTeams, sub));
     ranked.forEach((rr,i)=>rr.rank=i+1);
-    return { leg:l, round:r, cround: getContinuousRound(matches, l, r), ranks: Object.fromEntries(ranked.map(rr=>[rr.team, rr.rank])) };
+    return { leg:l, round:r, cround: getContinuousRound(matches, l, r),
+             ranks: Object.fromEntries(ranked.map(rr=>[rr.team, rr.rank])),
+             pts:   Object.fromEntries(ranked.map(rr=>[rr.team, rr.pts])) };
   });
 
   return { snaps, allTeams, played };
@@ -3110,6 +3112,10 @@ function renderHistInseason(){
     <select id="is-div" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
       ${[1,2,3].map(d=>`<option value="${d}">${getDivName(d)}</option>`).join('')}
     </select>
+  </div>
+  <div class="tabs" style="padding:0 12px 8px;">
+    <div class="tab ${isMetric==='rank'?'active':''}" id="is-metric-rank" onclick="setIsMetric('rank')">順位</div>
+    <div class="tab ${isMetric==='pts'?'active':''}" id="is-metric-pts" onclick="setIsMetric('pts')">勝点</div>
   </div><div id="is-content"></div>`;
   document.getElementById('history-area').innerHTML=html;
   reloadInseason();
@@ -3157,6 +3163,18 @@ function filterIsChips(q){
   });
 }
 
+// シーズン内推移グラフの縦軸（'rank'＝順位、'pts'＝勝点）
+let isMetric = 'rank';
+function setIsMetric(m){
+  isMetric = m;
+  document.getElementById('is-metric-rank')?.classList.toggle('active', m==='rank');
+  document.getElementById('is-metric-pts')?.classList.toggle('active', m==='pts');
+  const yr=document.getElementById('is-yr')?.value||getSeasons()[0];
+  const div=parseInt(document.getElementById('is-div')?.value||1);
+  const {snaps, allTeams} = computeInseasonSnapshots(yr, div);
+  drawIsChart(snaps, allTeams);
+}
+
 function setIsSelection(mode){
   const yr=document.getElementById('is-yr')?.value||getSeasons()[0];
   const div=parseInt(document.getElementById('is-div')?.value||1);
@@ -3194,29 +3212,56 @@ function toggleIs(t,el,c){
 
 function drawIsChart(snaps,allTeams){
   const cv=document.getElementById('is-cv');if(!cv)return;
-  const W=cv.offsetWidth||300;cv.width=W;cv.height=220;
-  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,220);
-  const pl=40,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=220-pt-pb;
+  const H=220;
+  const W=cv.offsetWidth||300;cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
+  const pl=40,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=H-pt-pb;
   const n=snaps.length,nt=allTeams.length;
+  const byPts = isMetric==='pts';
+  const valueOf = (s,t) => byPts ? s.pts[t] : s.ranks[t];
   const xs=i=>pl+gw*i/Math.max(n-1,1);
-  const ys=r=>pt+gh*(r-1)/Math.max(nt-1,1);
+
+  // 縦軸：順位は1位が上、勝点は0が下。勝点の目盛りは最大値に合わせて5・10・20刻みから選ぶ
+  let ys, ticks;
+  if(byPts){
+    const maxPts = Math.max(3, ...snaps.flatMap(s=>allTeams.map(t=>s.pts[t]||0)));
+    const step = [5,10,20,30,50].find(st=>maxPts/st<=8) || 100;
+    const top = Math.ceil(maxPts/step)*step;
+    ys = v => pt + gh*(1 - v/top);
+    ticks = []; for(let v=0; v<=top; v+=step) ticks.push({v, label:`${v}`});
+  } else {
+    ys = r => pt + gh*(r-1)/Math.max(nt-1,1);
+    ticks = []; for(let r=1;r<=nt;r++) ticks.push({v:r, label:`${r}位`});
+  }
   ctx.strokeStyle=cssVar('--border');ctx.lineWidth=1;
-  for(let r=1;r<=nt;r++){ctx.beginPath();ctx.moveTo(pl,ys(r));ctx.lineTo(W-pr,ys(r));ctx.stroke();ctx.fillStyle=cssVar('--muted');ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(r+'位',pl-4,ys(r)+4);}
-  // 節が多い場合はラベルを間引いて重なりを防ぐ
-  const labelStep = Math.max(1, Math.ceil(n/12));
-  snaps.forEach((s,i)=>{
-    if(i%labelStep!==0 && i!==n-1) return;
-    ctx.fillStyle=cssVar('--muted');ctx.font='9px sans-serif';ctx.textAlign='center';
-    ctx.fillText(`第${s.cround}節`,xs(i),220-pb+10);
+  ticks.forEach(tk=>{
+    ctx.beginPath();ctx.moveTo(pl,ys(tk.v));ctx.lineTo(W-pr,ys(tk.v));ctx.stroke();
+    ctx.fillStyle=cssVar('--muted');ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(tk.label,pl-4,ys(tk.v)+4);
   });
+  // 節のラベルは、1つあたり約40pxの間隔を空けて間引く（重なり防止）
+  const labelStep = Math.max(1, Math.ceil(n*40/Math.max(gw,1)));
+  snaps.forEach((s,i)=>{
+    // 間引いた位置と最終節に付ける。最終節の直前のラベルは、最終節と重ならないよう省く
+    if(i!==n-1 && (i%labelStep!==0 || n-1-i<labelStep)) return;
+    ctx.fillStyle=cssVar('--muted');ctx.font='9px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`第${s.cround}節`,xs(i),H-pb+10);
+  });
+  const ends = []; // 線の右端に付けるチーム名（あとで重ならないよう並べ直す）
   allTeams.forEach((t,ti)=>{
     if(!isSel.has(t))return;
     const c=PAL[ti%PAL.length];
-    const pts=snaps.map((s,i)=>s.ranks[t]!=null?{x:xs(i),y:ys(s.ranks[t])}:null).filter(Boolean);
+    const pts=snaps.map((s,i)=>valueOf(s,t)!=null?{x:xs(i),y:ys(valueOf(s,t))}:null).filter(Boolean);
     if(pts.length>=2){ctx.beginPath();ctx.strokeStyle=c;ctx.lineWidth=1.2;ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();}
     // 各データ点に、線より僅かに太い程度の小さな点を打つ
     pts.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,1.5,0,Math.PI*2);ctx.fill();});
-    if(pts.length){const last=pts[pts.length-1];ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';ctx.fillText(t,last.x+6,last.y+4);}
+    if(pts.length){ const last=pts[pts.length-1]; ends.push({t, c, x:last.x, y:last.y}); }
+  });
+  // 勝点が並ぶとチーム名が重なるので、上から順に最低11pxずつ間隔を空けて置く
+  ends.sort((a,b)=>a.y-b.y);
+  let prevY = -Infinity;
+  ends.forEach(e=>{
+    const y = Math.max(e.y, prevY+11); prevY = y;
+    ctx.fillStyle=e.c; ctx.font='bold 10px sans-serif'; ctx.textAlign='left'; ctx.fillText(e.t, e.x+6, y+4);
   });
 }
 
