@@ -687,7 +687,24 @@ function load(raw){
     migrateAddPlayedAt(d);
   }
   migrateCupsToSlots(d);
+  repairAfterSeasonDelete(d);
   return d;
+}
+
+// シーズンを削除→同じ年度をやり直したときに残ってしまったデータを直す。
+//  ・昇降格の記録の重複（同じチーム・同じ年度）は、新しい方だけ残す
+//  ・存在しないシーズンの昇降格の記録・開幕時レーティング・開幕前予測の保存分を消す
+function repairAfterSeasonDelete(d){
+  const exists = y => !!d.seasons?.[String(y)];
+  const seen = new Set(), kept = [];
+  (d.promotionLog||[]).slice().reverse().forEach(e=>{
+    const k = `${e.team}\u0000${e.toYear}`;
+    if(seen.has(k) || !exists(e.toYear)) return;
+    seen.add(k); kept.push(e);
+  });
+  d.promotionLog = kept.reverse();
+  Object.keys(d.ratingSnapshots||{}).forEach(y=>{ if(!exists(y)) delete d.ratingSnapshots[y]; });
+  Object.keys(d.preseasonStore||{}).forEach(k=>{ if(!exists(k.split('-')[0])) delete d.preseasonStore[k]; });
 }
 
 // 旧構造（db.cups[yr] = カップ1つ）を新構造（db.cups[yr][slot] = カップ）へ移行する。
@@ -1651,6 +1668,7 @@ function startNewSeason(){
 
   // 昇降格を適用（ログは記録のみ・現在は表示未使用）
   if(!db.promotionLog) db.promotionLog = [];
+  db.promotionLog = db.promotionLog.filter(e=>String(e.toYear)!==String(yr)); // やり直し時の重複を防ぐ
   moves.forEach(m=>{
     if(db.teams[m.team]) db.teams[m.team].div = m.to;
     db.promotionLog.push({ fromYear: prevYr, toYear: String(yr), team: m.team, fromDiv: m.from, toDiv: m.to, reason: m.reason });
@@ -2114,6 +2132,24 @@ function importFullBackup(input){
 
 
 // ══ シーズン削除 ══
+// 削除したシーズンに付随するデータ（カップ戦・開幕時レーティング・昇降格の記録・予測の保存分・表示名）を消す
+function purgeSeasonExtras(yr){
+  yr = String(yr);
+  if(db.cups) delete db.cups[yr];
+  if(db.ratingSnapshots) delete db.ratingSnapshots[yr];
+  if(db.seasonMeta) delete db.seasonMeta[yr];
+  db.promotionLog = (db.promotionLog||[]).filter(e=>String(e.toYear)!==yr);
+  if(db.preseasonStore) Object.keys(db.preseasonStore).forEach(k=>{ if(k.split('-')[0]===yr) delete db.preseasonStore[k]; });
+  Object.keys(predictCache).forEach(k=>{ if(k.split('-')[0]===yr) delete predictCache[k]; });
+  Object.keys(preseasonCache).forEach(k=>{ if(k.split('-')[0]===yr) delete preseasonCache[k]; });
+}
+// チームの所属部門を、指定シーズンでの所属に合わせる（そのシーズンにいないチームは変更しない）
+function syncTeamDivsToSeason(yr){
+  if(!yr) return;
+  [1,2,3].forEach(div=>{
+    (getDivData(yr, div)?.teams||[]).forEach(t=>{ if(db.teams[t]) db.teams[t].div = div; });
+  });
+}
 function deleteSeason(){
   const sel = document.getElementById('del-yr');
   const yr = sel.value;
@@ -2129,10 +2165,16 @@ function deleteSeason(){
     return `${getDivName(d)}: ${teamCount}チーム / ${matchCount}試合`;
   }).filter(Boolean).join('\n');
 
-  if(!confirm(`「${getSeasonLabel(yr)}」を完全に削除します。\n\n${summary}\n\nこの操作は取り消せません。本当によろしいですか？`)) return;
+  const cupNames = Object.keys(db.cups?.[yr]||{}).map(slot=>getCupName(slot));
+  const cupLine = cupNames.length ? `\nカップ戦: ${cupNames.join('・')}（一緒に削除されます）` : '';
+  if(!confirm(`「${getSeasonLabel(yr)}」を完全に削除します。\n\n${summary}${cupLine}\n\nこの操作は取り消せません。本当によろしいですか？`)) return;
 
+  const wasLatest = latestSeason()===String(yr);
   delete db.seasons[yr];
-  if(db.seasonMeta) delete db.seasonMeta[String(yr)]; // シーズンのメタ情報も併せて削除
+  purgeSeasonExtras(String(yr));
+  // 最新シーズンを消したときは、シーズン開始時に適用した昇降格を取り消す
+  // （チームの所属部門を、残ったうちで最新のシーズンの所属に戻す。新しく追加したチームはそのまま）
+  if(wasLatest) syncTeamDivsToSeason(latestSeason());
 
   save(db);
   invalidateEloCache(); // 試合データが変わったのでレーティングのキャッシュを破棄
@@ -5039,11 +5081,12 @@ function runPrediction(){
       calibrateStrength(); // 強さ係数を過去シーズンで調整（データが変わったときだけ再計算）
       predictCache[key] = predictStandings(yr, div, 20000);
       // シーズン当初の予想勝点（開幕時点の戦力で全試合をシミュレーション）。係数が変わったときだけ計算し直す
-      if(!preseasonCache[key] || preseasonCache[key].k!==strengthK || preseasonCache[key].sig!==calib.sig){
+      const teamsSig = (getDivData(yr, div)?.teams||[]).slice().sort().join('|');
+      if(!preseasonCache[key] || preseasonCache[key].k!==strengthK || preseasonCache[key].sig!==calib.sig || preseasonCache[key].teams!==teamsSig){
         const saved = db.preseasonStore?.[key];
-        if(saved && saved.k===strengthK && saved.sig===calib.sig) preseasonCache[key] = saved;
+        if(saved && saved.k===strengthK && saved.sig===calib.sig && saved.teams===teamsSig) preseasonCache[key] = saved;
         else {
-          preseasonCache[key] = {k:strengthK, sig:calib.sig, data:predictPreseason(yr, div, 5000)};
+          preseasonCache[key] = {k:strengthK, sig:calib.sig, teams:teamsSig, data:predictPreseason(yr, div, 5000)};
           if(!db.preseasonStore) db.preseasonStore = {};
           db.preseasonStore[key] = preseasonCache[key]; save(db);
         }
