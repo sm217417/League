@@ -469,7 +469,6 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
     <div class="ptitle">📖 記録</div>
     <div class="tabs" style="padding:7px 0 0;margin:0;">
       <div class="tab active" id="hcat-tab-records" onclick="switchHistCategory('records')">📚 記録</div>
-      <div class="tab" id="hcat-tab-trends" onclick="switchHistCategory('trends')">📈 推移</div>
       <div class="tab" id="hcat-tab-analysis" onclick="switchHistCategory('analysis')">🔍 分析</div>
     </div>
     <div class="tabs" id="hcat-sub-records" style="padding:2px 0 7px;margin:0;">
@@ -477,15 +476,13 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
       <div class="tab" onclick="switchHistTab('titles',this)">🎖️ タイトル</div>
       <div class="tab" onclick="switchHistTab('streaks',this)">🔥 連勝記録</div>
       <div class="tab" onclick="switchHistTab('upsets',this)">💥 金星</div>
-    </div>
-    <div class="tabs" id="hcat-sub-trends" style="padding:2px 0 7px;margin:0;display:none;">
-      <div class="tab active" onclick="switchHistTab('trend',this)">📊 年度別</div>
-      <div class="tab" onclick="switchHistTab('inseason',this)">🔄 シーズン内</div>
-      <div class="tab" onclick="switchHistTab('snapshot',this)">📸 開幕時R</div>
+      <div class="tab" onclick="switchHistTab('trend',this)">📊 年度別推移</div>
+      <div class="tab" onclick="switchHistTab('inseason',this)">🔄 順位変動</div>
     </div>
     <div class="tabs" id="hcat-sub-analysis" style="padding:2px 0 7px;margin:0;display:none;">
       <div class="tab active" onclick="switchHistTab('profile',this)">👤 プロフィール</div>
       <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
+      <div class="tab" onclick="switchHistTab('snapshot',this)">📸 開幕時R</div>
     </div>
   </div>
   <div id="history-area"></div>
@@ -875,6 +872,24 @@ const divColor = d => DIV_COLOR[d] || 'var(--muted)';
 const divShortName = d => ({1:'1部', 2:'2部', 3:'3部'})[d] || '—';
 // 部門色を薄く敷いたバッジの背景
 const divTint = d => `color-mix(in srgb, ${divColor(d)} 14%, transparent)`;
+// 折れ線グラフの右端に付けるチーム名：最長の名前が収まる右余白を返す（画面幅の4割まで）
+function endLabelPad(ctx, names, W){
+  ctx.font = 'bold 10px sans-serif';
+  const w = Math.max(0, ...names.map(n=>ctx.measureText(n).width));
+  return Math.min(Math.max(w + 12, 30), Math.floor(W*0.4));
+}
+// チーム名を線の右端に置く。重なる場合は上から順に11pxずつずらし、余白に収まらない名前は「…」で切る
+function drawEndLabels(ctx, ends, maxW){
+  ends.sort((a,b)=>a.y-b.y);
+  let prevY = -Infinity;
+  ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ends.forEach(e=>{
+    const y = Math.max(e.y, prevY+11); prevY = y;
+    let t = e.t;
+    if(ctx.measureText(t).width > maxW){ while(t.length>1 && ctx.measureText(t+'…').width > maxW) t = t.slice(0,-1); t += '…'; }
+    ctx.fillStyle = e.c; ctx.fillText(t, e.x+6, y+4);
+  });
+}
 // CSS変数の実際の値（canvasに描くときに使う。canvasはvar()を解釈できないため）
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -2294,9 +2309,10 @@ function switchHistTab(tab, el){
 }
 
 // 記録タブのカテゴリ切替（📚記録 / 📈推移 / 🔍分析）：該当カテゴリのサブタブ行を表示し、その先頭タブを開く
-const HIST_CATEGORY_DEFAULT_TAB = { records:'alltime', trends:'trend', analysis:'profile' };
+const HIST_CATEGORY = ['records','analysis'];
+const HIST_CATEGORY_DEFAULT_TAB = { records:'alltime', analysis:'profile' };
 function switchHistCategory(cat){
-  ['records','trends','analysis'].forEach(c=>{
+  HIST_CATEGORY.forEach(c=>{
     document.getElementById(`hcat-tab-${c}`).classList.toggle('active', c===cat);
     document.getElementById(`hcat-sub-${c}`).style.display = c===cat ? '' : 'none';
   });
@@ -2309,10 +2325,10 @@ function switchHistCategory(cat){
 
 // 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
 const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
-  trend:'trends', inseason:'trends', snapshot:'trends', profile:'analysis', h2h:'analysis' };
+  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis' };
 function restoreHistoryView(){
   const cat = HIST_TAB_CATEGORY[histTab] || 'records';
-  ['records','trends','analysis'].forEach(c=>{
+  HIST_CATEGORY.forEach(c=>{
     document.getElementById(`hcat-tab-${c}`).classList.toggle('active', c===cat);
     document.getElementById(`hcat-sub-${c}`).style.display = c===cat ? '' : 'none';
   });
@@ -2708,6 +2724,56 @@ function showRatingSnapshot(){
 }
 
 // ══ チーム別プロフィール ══
+// チームのリーグ戦を時系列に並べ、4種類の連続記録（最長と、いま続いているもの）を求める
+const STREAK_KINDS = [
+  { key:'win',      label:'最長連勝',     unit:'連勝',       color:'var(--g)',     test:r=>r==='W' },
+  { key:'lose',     label:'最長連敗',     unit:'連敗',       color:'var(--red)',   test:r=>r==='L' },
+  { key:'unbeaten', label:'最長負けなし', unit:'試合負けなし', color:'var(--g)',     test:r=>r!=='L' },
+  { key:'winless',  label:'最長勝ちなし', unit:'試合勝ちなし', color:'var(--red)',   test:r=>r!=='W' },
+];
+function computeTeamStreaks(team){
+  const games = [];
+  getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
+    const d = getDivData(yr, div);
+    (d?.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)).forEach(m=>{
+      games.push({ yr, div, cround:getContinuousRound(d.matches, m.leg, m.round), order:m.playedAt??0, res:resultFor(m, team).res });
+    });
+  }));
+  games.sort((a,b)=>a.order-b.order);
+  const out = {};
+  STREAK_KINDS.forEach(k=>{
+    let best = {len:0}, cur = {len:0};
+    games.forEach(g=>{
+      if(k.test(g.res)){ cur = cur.len ? {...cur, len:cur.len+1, end:g} : {len:1, start:g, end:g}; if(cur.len>best.len) best = {...cur}; }
+      else cur = {len:0};
+    });
+    out[k.key] = { best, current: cur, ongoing: best.len>0 && cur.len===best.len && cur.end===best.end };
+  });
+  return {games:games.length, ...out};
+}
+function teamStreaksHtml(team){
+  const st = computeTeamStreaks(team);
+  if(!st.games) return '';
+  const at = g => `${getSeasonLabel(g.yr)} 第${g.cround}節`;
+  const span = b => b.start===b.end ? at(b.start)
+    : b.start.yr===b.end.yr ? `${getSeasonLabel(b.start.yr)} 第${b.start.cround}〜${b.end.cround}節`
+    : `${at(b.start)}〜${at(b.end)}`;
+  let html = `<div class="slbl">🔁 連続記録（リーグ戦）</div><div class="card">`;
+  STREAK_KINDS.forEach(k=>{
+    const s = st[k.key];
+    html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
+      <span style="font-size:11px;color:var(--muted);flex:0 0 72px;">${k.label}</span>
+      <span style="font-size:16px;font-weight:700;color:${s.best.len?k.color:'var(--muted)'};flex:0 0 auto;">${s.best.len}</span>
+      <span style="font-size:12px;flex:1;text-align:right;min-width:0;">
+        ${s.best.len ? `${span(s.best)}${s.ongoing?' <span style="color:var(--gold);font-weight:700;">継続中</span>':''}` : '<span style="color:var(--muted);">なし</span>'}
+        ${s.current.len && !s.ongoing ? `<br><span style="color:var(--muted);font-size:10px;">現在 ${s.current.len}${k.unit}中</span>` : ''}
+      </span>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
 function renderTeamProfile(){
   const teams = Object.keys(db.teams).filter(t=>db.teams[t].active);
   const el = document.getElementById('history-area');
@@ -2857,6 +2923,8 @@ function showTeamProfile(){
     if(recMaxLoss) html += recRow(recMaxLoss, '最大点差敗北', 'var(--red)', `-${recMaxLoss.opp-recMaxLoss.my}`);
     html += `</div>`;
   }
+
+  html += teamStreaksHtml(team);
 
   if(log.length){
     html += `<div class="slbl">🔀 昇降格履歴</div><div class="card">`;
@@ -3032,7 +3100,9 @@ function drawTrend(seasons, teamCombined, bands){
   const H = cv.height || 220;
   const W=cv.offsetWidth||300;cv.width=W;
   const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
-  const pl=44,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=H-pt-pb;
+  const pl=44,pt=14,pb=30;
+  const pr = endLabelPad(ctx, Object.keys(teamCombined).filter(t=>trendSel.has(t)), W);
+  const gw=W-pl-pr,gh=H-pt-pb;
   const n = seasons.length;
   const totalSpan = bands.reduce((s,b)=>s+b.size,0);
 
@@ -3057,9 +3127,11 @@ function drawTrend(seasons, teamCombined, bands){
       ctx.strokeStyle=cssVar('--border'); ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(pl-4, botY); ctx.lineTo(W-pr+4, botY); ctx.stroke();
     }
-    // バンドラベル（右端）
-    ctx.fillStyle=cssVar('--muted'); ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
-    ctx.fillText(getDivName(b.div), W-pr+8, (topY+botY)/2+3);
+    // バンドラベル（帯の左上。右端はチーム名を置くので使わない）
+    ctx.font='bold 9px sans-serif'; ctx.textAlign='left';
+    const lbl = getDivName(b.div), lw = ctx.measureText(lbl).width;
+    ctx.fillStyle=cssVar('--surface'); ctx.fillRect(pl+2, topY-1, lw+6, 12);
+    ctx.fillStyle=divColor(b.div); ctx.fillText(lbl, pl+5, topY+8);
   });
 
   // X軸ラベル（年度）— 密集する場合は間引き
@@ -3072,6 +3144,7 @@ function drawTrend(seasons, teamCombined, bands){
 
   // チームの線（年度が連続する箇所のみ線を繋ぐ。部門またぎでも年度が連続していれば繋がる＝昇降格の軌跡が見える）
   const teams = Object.keys(teamCombined);
+  const ends = [];
   teams.forEach((t,ti)=>{
     if(!trendSel.has(t))return;
     const c=PAL[ti%PAL.length];
@@ -3111,11 +3184,9 @@ function drawTrend(seasons, teamCombined, bands){
     });
     flushPath();
 
-    if(lastPt){
-      ctx.fillStyle=c;ctx.font='bold 10px sans-serif';ctx.textAlign='left';
-      ctx.fillText(t,lastPt.x+6,lastPt.y+4);
-    }
+    if(lastPt) ends.push({t, c, x:lastPt.x, y:lastPt.y});
   });
+  drawEndLabels(ctx, ends, pr-8);
 }
 
 // シーズン内の各節終了時点の順位スナップショットを計算（共通関数）
@@ -3257,7 +3328,9 @@ function drawIsChart(snaps,allTeams){
   const H=220;
   const W=cv.offsetWidth||300;cv.width=W;cv.height=H;
   const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
-  const pl=40,pr=80,pt=14,pb=30,gw=W-pl-pr,gh=H-pt-pb;
+  const pl=40,pt=14,pb=30;
+  const pr = endLabelPad(ctx, allTeams.filter(t=>isSel.has(t)), W);
+  const gw=W-pl-pr,gh=H-pt-pb;
   const n=snaps.length,nt=allTeams.length;
   const byPts = isMetric==='pts';
   const valueOf = (s,t) => byPts ? s.pts[t] : s.ranks[t];
@@ -3301,13 +3374,7 @@ function drawIsChart(snaps,allTeams){
     pts.forEach(p=>{ctx.beginPath();ctx.fillStyle=c;ctx.arc(p.x,p.y,1.5,0,Math.PI*2);ctx.fill();});
     if(pts.length){ const last=pts[pts.length-1]; ends.push({t, c, x:last.x, y:last.y}); }
   });
-  // 勝点が並ぶとチーム名が重なるので、上から順に最低11pxずつ間隔を空けて置く
-  ends.sort((a,b)=>a.y-b.y);
-  let prevY = -Infinity;
-  ends.forEach(e=>{
-    const y = Math.max(e.y, prevY+11); prevY = y;
-    ctx.fillStyle=e.c; ctx.font='bold 10px sans-serif'; ctx.textAlign='left'; ctx.fillText(e.t, e.x+6, y+4);
-  });
+  drawEndLabels(ctx, ends, pr-8);
 }
 
 // ══════════════════════════════════
@@ -4367,6 +4434,20 @@ function getTeamTendency(yr, div, team){
 }
 
 // 2チームの全シーズン通算・直接対決成績（得点も含む）
+// ══ 直近の調子（連勝・連敗）の補正 ══
+// 直近5試合の勝点ペースと得失点差を、期待得点の倍率に変換する。効きすぎると連勝・連敗中のチームが
+// 極端に評価されるので、係数は小さめ・上下限は±12%にしている。
+const FORM_NEUTRAL = 1.3;  // 平均的な1試合あたり勝点の目安
+const FORM_K_PTS   = 0.15; // 勝点ペースの効き（以前は0.45）
+const FORM_K_GD    = 0.015;// 平均得失点差1点あたりの効き（以前は0.04）
+const FORM_MIN = 0.88, FORM_MAX = 1.12; // 倍率の上下限（以前は0.7〜1.4）
+function formMultiplier(t){
+  let m = 1;
+  if(t.recentAvg!=null) m *= (1 + (t.recentAvg-FORM_NEUTRAL)*FORM_K_PTS/3);
+  if(t.recentGd!=null)  m *= (1 + Math.max(-2, Math.min(2, t.recentGd))*FORM_K_GD);
+  return Math.max(FORM_MIN, Math.min(FORM_MAX, m));
+}
+
 // ══ ポアソン分布による試合結果の確率 ══
 // ポアソン分布の確率質量関数（k点が入る確率）
 function poissonPmf(k, lambda){
@@ -4583,7 +4664,7 @@ function getAttackDefense(yr, div, team, elo){
   const rawDefense = LEAGUE_AVG_GOALS>0 ? avgGa/LEAGUE_AVG_GOALS : 1.0;
 
   // 縮小推定：試合数が増えるほど今季の実績を重視する
-  const K_SHRINK = 5;
+  const K_SHRINK = 12; // 今季の実績を何試合ぶん割り引くか（大きいほど序盤の結果に振り回されない）
   const w = games/(games+K_SHRINK);
   const attack = w*rawAttack + (1-w)*baseAttack;
   const defense = w*rawDefense + (1-w)*baseDefense;
@@ -4639,7 +4720,7 @@ function getLeagueAvgGoalsHomeAway(targetDiv){
 
 // チームの攻撃力・守備力を「ホーム時」「アウェイ時」に分けて算出する。
 // ホーム/アウェイ別だとサンプル数が半減するため、全体値(getAttackDefense)を土台に縮小推定でブレンドする。
-const HA_SHRINK = 3; // ホーム/アウェイ別の縮小推定の効き（小さいほど実績重視）
+const HA_SHRINK = 8; // ホーム/アウェイ別の縮小推定の効き（小さいほど実績重視）
 function getHomeAwayAttackDefense(yr, div, team, overallAD, avgHome, avgAway){
   const d = getDivData(yr, div);
   const played = d ? (d.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)) : [];
@@ -4719,17 +4800,6 @@ function predictStandings(yr, div, simulations=20000, opts){
     return Math.max(0.75, Math.min(1.30, 1 + diff/100 * 0.15)); // HA差100ptあたり得点±15%
   };
 
-  const NEUTRAL = 1.3; // 平均的な1試合あたり勝点の目安（3勝1分の中間的水準）
-  const K_FORM = 0.45;  // 【案B】直近フォーム（勝点ペース）による期待得点の補正係数
-  const K_GD = 0.04;    // 【案D】直近の平均得失点差による補正係数（大勝/辛勝の違いを反映）
-
-  // 直近の調子を、勝点ペースと得失点差の両面から得点倍率に変換する
-  const formMultiplier = (t)=>{
-    let m = 1;
-    if(t.recentAvg!=null) m *= (1 + (t.recentAvg-NEUTRAL)*K_FORM/3);
-    if(t.recentGd!=null)  m *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD);
-    return Math.max(0.7, Math.min(1.4, m)); // 効きすぎないよう上下限を設ける
-  };
 
   // 直近フォームはチーム単位で決まるので、試合ごとに再計算せず先に一度だけ求めておく
   const tendency = {};
@@ -5179,15 +5249,8 @@ function renderNextRoundForecast(){
       lamA /= Math.max(0.85, hMult);
 
       // 順位予想と同じ基準で、直近の調子（勝点ペース＋得失点差）を反映する
-      const NEUTRAL_F = 1.3, K_FORM_F = 0.45, K_GD_F = 0.04;
-      const formMult = (t)=>{
-        let mm = 1;
-        if(t.recentAvg!=null) mm *= (1 + (t.recentAvg-NEUTRAL_F)*K_FORM_F/3);
-        if(t.recentGd!=null)  mm *= (1 + Math.max(-2, Math.min(2, t.recentGd))*K_GD_F);
-        return Math.max(0.7, Math.min(1.4, mm));
-      };
-      lamH *= formMult(getTeamTendency(yr, div, h));
-      lamA *= formMult(getTeamTendency(yr, div, a));
+      lamH *= formMultiplier(getTeamTendency(yr, div, h));
+      lamA *= formMultiplier(getTeamTendency(yr, div, a));
 
       const h2h = getH2HStats(h, a);
       if(h2h && h2h.total>=2){
@@ -5377,7 +5440,7 @@ function calibSignature(){
     let g=0; getDivData(yr,div).matches.forEach(m=>{ g+=m.home_score*7+m.away_score*3+m.round; });
     parts.push(`${yr}:${div}:${g}`);
   }));
-  return `${getSeasons().join(',')}|${parts.join(',')}`;
+  return `model2|${getSeasons().join(',')}|${parts.join(',')}`; // model2：攻守力・調子の効きを弱めた版
 }
 function calibrateStrength(){
   const sig = calibSignature();
