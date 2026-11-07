@@ -273,6 +273,16 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 .bx-line{position:absolute;top:-2px;bottom:-2px;width:0;border-left:2px dashed var(--gold);margin-left:-1px;z-index:1;}
 .bx-note{font-size:11px;color:var(--text);padding:0 13px 6px;line-height:1.7;}
 .bx-line-key{display:inline-block;width:0;height:11px;border-left:2px dashed var(--gold);margin-right:6px;vertical-align:-1px;}
+.joint-chk{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.6;margin:0 0 12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);cursor:pointer;}
+.joint-chk input{margin-top:3px;flex:0 0 auto;}
+.joint-banner{font-size:11px;line-height:1.6;margin:0 12px 8px;padding:7px 10px;border-radius:8px;background:var(--gold2);color:var(--text);}
+.pkrow{display:flex;align-items:center;gap:3px;margin-top:2px;}
+.pkrow[hidden]{display:none;}
+.pklbl{font-size:9px;font-weight:700;color:var(--muted);margin-right:2px;}
+.sinp.pkinp{width:30px;height:24px;font-size:12px;}
+.stbl-pk th:nth-child(5){width:calc(4ch + 12px);}
+.bx-best{position:absolute;top:50%;width:7px;height:7px;margin:-4px 0 0 -4px;border:1.5px solid var(--text);background:var(--surface);transform:rotate(45deg);box-sizing:border-box;z-index:2;}
+.bx-best-out{position:absolute;right:-2px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;color:var(--muted);background:var(--surface);padding:0 1px;}
 </style>
 </head>
 <body>
@@ -372,6 +382,15 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
         <p style="font-size:10px;color:var(--muted);margin:-4px 0 10px;line-height:1.6;">
           ※ 移行期の変則シーズンなど、昇降格を行わない場合は両方とも 0 にしてください。
         </p>
+        <div class="field">
+          <label for="s-legs">総当たりの回数</label>
+          <select id="s-legs"><option value="2">2回（ホーム＆アウェイ）</option><option value="1">1回</option></select>
+        </div>
+        <label class="joint-chk" for="s-joint">
+          <input type="checkbox" id="s-joint" onchange="onJointToggle()">
+          <span><b>2部と3部を合同リーグにする</b><br>
+          <span style="font-size:10px;color:var(--muted);">2部・3部の全チームで1つの順位表にします（百年構想リーグのような特別大会向け）。昇降格はなし、90分で同点ならPK戦（PK勝ち2点・PK負け1点）。所属部門は次のシーズンにそのまま戻ります。</span></span>
+        </label>
         <div class="field">
           <label>日程の作り方</label>
           <div class="tabs" style="padding:0;">
@@ -603,6 +622,7 @@ function compressDb(src){
           o.p = 1;
           o.hs = m.home_score; o.as = m.away_score;
           if(m.playedAt!==undefined) o.t = m.playedAt;
+          if(m.pk_home!=null && m.pk_away!=null){ o.ph = m.pk_home; o.pa = m.pk_away; }
         }
         return o;
       });
@@ -627,6 +647,7 @@ function decompressDb(d){
           played: !!o.p,
         };
         if(o.t!==undefined) m.playedAt = o.t;
+        if(o.ph!=null && o.pa!=null){ m.pk_home = o.ph; m.pk_away = o.pa; }
         return m;
       });
     });
@@ -916,6 +937,17 @@ function drawEndLabels(ctx, ends, maxW){
 // CSS変数の実際の値（canvasに描くときに使う。canvasはvar()を解釈できないため）
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+// 合同リーグの年度で3部を開いたときの案内（3部のチームは2部のタブにまとめて表示する）
+function jointNoteHtml(yr, div){
+  if(div!==3 || !getDivData(yr,2)?.joint) return '';
+  return `<div class="loading">この年度は${getDivName(2)}と${getDivName(3)}の合同リーグです。<br>${getDivName(2)}のタブにまとめて表示しています。</div>`;
+}
+// 合同リーグ・PK戦ルールの年度に出す説明
+function specialRuleNoteHtml(d){
+  if(!d?.joint && !d?.pkDraw) return '';
+  return `<div class="joint-banner">${d.joint?`<b>${getDivName(2)}・${getDivName(3)}合同リーグ</b>（昇降格なし）／`:''}90分で同点の試合はPK戦：PK勝ち<b>2点</b>・PK負け<b>1点</b></div>`;
+}
+
 // ══ 部門タブ共通処理 ══
 // 部門タブを描く。タブを押したときの処理（cb）はタブ列ごとに覚えておき、selectDivTab から呼ぶ
 const divTabHandlers = {};
@@ -972,19 +1004,33 @@ function resultFor(m, team){
   const isHome = m.home===team;
   const gf = isHome ? m.home_score : m.away_score;
   const ga = isHome ? m.away_score : m.home_score;
-  return { gf, ga, isHome, pts: gf>ga?3:gf===ga?1:0, res: gf>ga?'W':gf===ga?'D':'L' };
+  // 90分で同点かつPK戦のスコアがある試合は、PK勝ち2点・PK負け1点（勝敗の記録上は引き分けのまま）
+  const pk = gf===ga ? pkOutcome(m, isHome) : null;
+  return { gf, ga, isHome, pk, pts: gf>ga?3 : gf<ga?0 : pk==='W'?2 : 1, res: gf>ga?'W':gf===ga?'D':'L' };
+}
+// PK戦の勝敗（'W'／'L'）。PKのスコアが無ければ null
+function pkOutcome(m, isHome){
+  if(m.pk_home==null || m.pk_away==null || m.pk_home===m.pk_away) return null;
+  const mine = isHome ? m.pk_home : m.pk_away, theirs = isHome ? m.pk_away : m.pk_home;
+  return mine>theirs ? 'W' : 'L';
 }
 // 試合の一覧から、チームごとの成績（試合・勝・分・敗・得・失・差・勝点）を集計する。
 // 結果が入っていない試合と、teams にいないチームの試合は数えない。
 function tallyStandings(teams, matches){
   const s = {};
-  teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});
+  teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0,pkw:0,pkl:0});
   (matches||[]).forEach(m=>{
     if(!m.played || !s[m.home] || !s[m.away]) return;
-    [[m.home, m.home_score, m.away_score], [m.away, m.away_score, m.home_score]].forEach(([t, gf, ga])=>{
+    [[m.home, m.home_score, m.away_score, true], [m.away, m.away_score, m.home_score, false]].forEach(([t, gf, ga, isHome])=>{
       const r = s[t];
       r.p++; r.gf += gf; r.ga += ga; r.gd = r.gf - r.ga;
-      if(gf>ga){ r.w++; r.pts += 3; } else if(gf===ga){ r.d++; r.pts++; } else r.l++;
+      if(gf>ga){ r.w++; r.pts += 3; }
+      else if(gf===ga){
+        r.d++;
+        const pk = pkOutcome(m, isHome); // PK戦がある試合はPK勝ち2点・PK負け1点
+        if(pk==='W'){ r.pkw++; r.pts += 2; } else if(pk==='L'){ r.pkl++; r.pts += 1; } else r.pts++;
+      }
+      else r.l++;
     });
   });
   return s;
@@ -1092,12 +1138,15 @@ function loadStandings(){
   const div = curDiv.home;
   if(!yr){ document.getElementById('standings-area').innerHTML='<div class="loading">年度がありません</div>'; return; }
   const d = getDivData(yr, div);
+  if(!d && jointNoteHtml(yr, div)){ document.getElementById('standings-area').innerHTML = jointNoteHtml(yr, div); return; }
+  const pkMode = !!d?.pkDraw;
   const upto = refreshHomeRoundSelect(d); // 何節終了時点で見るか（null＝最新）
   const rows = calcStandings(yr, div, upto);
   const matches = d?.matches||[];
   const done = playedUpTo(d, upto).length;
   const total = matches.length;
-  const pN = d?.promoteN||1, rN = d?.relegateN||1;
+  // 昇格枠・降格枠（0＝昇降格なしの年度。未設定のときは標準の枠）
+  const pN = d?.promoteN ?? AUTO_PROMOTE_N, rN = d?.relegateN ?? AUTO_RELEGATE_N;
   const poEnabled = d?.playoff?.enabled;
   const poN = d?.playoff?.playoffN||0;
   const color = DIV_COLOR[div];
@@ -1163,26 +1212,27 @@ function loadStandings(){
     </p>`;
   } else {
     // ── 詳細表示モード ──
-    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact stbl-detail"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
+    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact stbl-detail ${pkMode?'stbl-pk':''}"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>${pkMode?'PK':'分'}</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th></tr></thead><tbody>`;
     rows.forEach((r,i)=>{
       const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
       const gd = r.gd>0?'+'+r.gd:r.gd;
       const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
-      html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span>${moveHtml(r.team)}</td><td class="tl">${r.team}${podiumIcon}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td>${ptsHtml(r.pts)}</td></tr>`;
+      html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span>${moveHtml(r.team)}</td><td class="tl">${r.team}${podiumIcon}${badge}</td><td>${r.p}</td><td>${r.w}</td><td>${pkMode?`${r.pkw}-${r.pkl}`:r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td>${ptsHtml(r.pts)}</td></tr>`;
     });
     html+=`</tbody></table></div></div>`;
     html+=`<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
       ※ 順位の横の▲▼は前節からの変動です。${upto?`<br>※ 第${upto}節終了時点の順位です（それ以前の節の延期分も、結果が入っていれば含みます）。`:''}
     </p>`;
   }
-  document.getElementById('standings-area').innerHTML=html;
+  document.getElementById('standings-area').innerHTML=specialRuleNoteHtml(d)+html;
 }
 
 // ══════════════════════════════════
 // 5. 試合生成・試合入力（リーグ）
 // ══════════════════════════════════
 // ══ 試合生成 ══
-function genMatches(teams){
+// legs：総当たりの回数（2＝ホーム＆アウェイ、1＝1回のみ）
+function genMatches(teams, legs=2){
   const t=[...teams];
   if(t.length%2)t.push(null);
   const N=t.length,fixed=t[0],rot=t.slice(1);
@@ -1196,7 +1246,7 @@ function genMatches(teams){
       if(flip){ const tmp=h; h=a; a=tmp; }
       if(h&&a){
         result.push({id:id++,round:r+1,leg:1,home:h,away:a,home_score:null,away_score:null,played:false});
-        result.push({id:id++,round:r+1,leg:2,home:a,away:h,home_score:null,away_score:null,played:false});
+        if(legs>=2) result.push({id:id++,round:r+1,leg:2,home:a,away:h,home_score:null,away_score:null,played:false});
       }
     }
   }
@@ -1282,6 +1332,8 @@ function renderMatches(){
   const yr=latestSeason();
   const d=getDivData(yr,div);
   const isManual = d?.scheduleMode==='manual';
+  const pkMode = !!d?.pkDraw;
+  if(!d && jointNoteHtml(yr, div)){ document.getElementById('matches-area').innerHTML = jointNoteHtml(yr, div); return; }
   const data=allMatches[div]||[];
   const rv=document.getElementById('m-round').value;
   const sv=document.getElementById('m-status').value;
@@ -1310,7 +1362,9 @@ function renderMatches(){
     html+=`<div class="rlbl" style="display:flex;justify-content:space-between;"><span>第${cr}節</span><span id="rcount-${div}-${k}">入力 ${all.filter(m=>m.played).length}/${all.length}</span></div><div class="card" style="margin-top:0;border-radius:0 0 10px 10px;">`;
     groups[k].forEach(m=>{
       const hs=m.home_score!==null?m.home_score:'',as_=m.away_score!==null?m.away_score:'';
-      const hw=m.played&&m.home_score>m.away_score, aw=m.played&&m.away_score>m.home_score;
+      const pkh=pkOutcome(m,true);
+      const hw=m.played&&(m.home_score>m.away_score||(m.home_score===m.away_score&&pkh==='W')), aw=m.played&&(m.away_score>m.home_score||(m.home_score===m.away_score&&pkh==='L'));
+      const isDraw = m.played && m.home_score===m.away_score;
       html+=`<div class="mcard ${m.played?'is-played':''}" id="mc-${div}-${m.id}" data-rk="${k}">
         ${isManual?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:-4px;"><button class="sbtn" style="border-color:var(--red);color:var(--red);padding:2px 8px;font-size:10px;" onclick="deleteManualMatch('${yr}',${div},${m.id})">🗑 削除</button></div>`:''}
         <div class="mteam home ${hw?'win':''}">${m.home}</div>
@@ -1322,6 +1376,14 @@ function renderMatches(){
             <input class="sinp" type="number" inputmode="numeric" enterkeyhint="next" min="0" max="99" value="${as_}" placeholder="-" id="as-${div}-${m.id}"
               onfocus="this.select()" onkeydown="scoreKey(event,this)" onchange="autoSaveMatch('${yr}',${div},${m.id})">
           </div>
+          ${pkMode?`<div class="pkrow" id="pk-${div}-${m.id}" ${isDraw?'':'hidden'}>
+            <span class="pklbl">PK</span>
+            <input class="sinp pkinp" type="number" inputmode="numeric" enterkeyhint="next" min="0" max="99" value="${m.pk_home??''}" placeholder="-" id="ph-${div}-${m.id}"
+              aria-label="${m.home}のPK" onfocus="this.select()" onkeydown="scoreKey(event,this)" onchange="autoSaveMatch('${yr}',${div},${m.id})">
+            <span class="ssep">:</span>
+            <input class="sinp pkinp" type="number" inputmode="numeric" enterkeyhint="next" min="0" max="99" value="${m.pk_away??''}" placeholder="-" id="pa-${div}-${m.id}"
+              aria-label="${m.away}のPK" onfocus="this.select()" onkeydown="scoreKey(event,this)" onchange="autoSaveMatch('${yr}',${div},${m.id})">
+          </div>`:''}
           <button class="sbtn ${m.played?'saved':''}" id="sb-${div}-${m.id}" onclick="saveMatch('${yr}',${div},${m.id})">
             ${m.played?'✓ 保存済':'保存'}
           </button>
@@ -1352,7 +1414,7 @@ function toast(msg, isErr){
 function scoreKey(ev, el){
   if(ev.key!=='Enter') return;
   ev.preventDefault();
-  const all=[...document.querySelectorAll('#matches-area .sinp')];
+  const all=[...document.querySelectorAll('#matches-area .sinp')].filter(x=>x.offsetParent!==null); // 隠れているPK欄は飛ばす
   const i=all.indexOf(el);
   if(i>=0 && i<all.length-1) all[i+1].focus(); else el.blur();
 }
@@ -1365,6 +1427,16 @@ function readMatchInputs(div,id){
   if(a===''||b==='') return 'half';
   const hs=parseInt(a,10), as_=parseInt(b,10);
   if(isNaN(hs)||isNaN(as_)||hs<0||as_<0||hs>99||as_>99) return 'bad';
+  // PK戦ありの部門で同点なら、PKのスコア（同点不可）も必要
+  const row=document.getElementById(`pk-${div}-${id}`);
+  if(row){
+    row.hidden = hs!==as_;
+    if(hs===as_){
+      const ph=parseInt(document.getElementById(`ph-${div}-${id}`).value,10), pa=parseInt(document.getElementById(`pa-${div}-${id}`).value,10);
+      if(isNaN(ph)||isNaN(pa)||ph<0||pa<0||ph===pa) return 'needpk';
+      return {hs, as:as_, ph, pa};
+    }
+  }
   return {hs, as:as_};
 }
 
@@ -1373,6 +1445,7 @@ function autoSaveMatch(yr,div,id){
   const v=readMatchInputs(div,id);
   if(v==='half') return;
   if(v==='bad'){ toast('スコアは0〜99の数字で入力してください', true); return; }
+  if(v==='needpk'){ toast('同点です。PK戦のスコアも入力してください'); return; }
   commitMatch(yr,div,id,v);
 }
 
@@ -1380,6 +1453,7 @@ function autoSaveMatch(yr,div,id){
 function saveMatch(yr,div,id){
   const v=readMatchInputs(div,id);
   if(v==='half'||v==='bad'){ toast('両チームのスコアを数字で入力してください', true); return; }
+  if(v==='needpk'){ toast('同点のときはPK戦のスコア（同点以外）も入力してください', true); return; }
   commitMatch(yr,div,id,v);
 }
 
@@ -1388,15 +1462,16 @@ function commitMatch(yr,div,id,v){
   const m=d?.matches?.find(x=>x.id===id);
   if(!m)return;
   if(v==='empty' && !m.played) return;                                   // もともと未入力なら何もしない
-  if(v!=='empty' && m.played && m.home_score===v.hs && m.away_score===v.as) return; // 変更なし
+  if(v!=='empty' && m.played && m.home_score===v.hs && m.away_score===v.as && (m.pk_home??null)===(v.ph??null) && (m.pk_away??null)===(v.pa??null)) return; // 変更なし
 
   // 保存に失敗したときに備えて、元の値を控えておく
-  const before = {home_score:m.home_score, away_score:m.away_score, played:m.played, playedAt:m.playedAt};
+  const before = {home_score:m.home_score, away_score:m.away_score, played:m.played, playedAt:m.playedAt, pk_home:m.pk_home, pk_away:m.pk_away};
   const seqBefore = db._seq;
   if(v==='empty'){
-    m.home_score=null; m.away_score=null; m.played=false; delete m.playedAt;
+    m.home_score=null; m.away_score=null; m.played=false; delete m.playedAt; delete m.pk_home; delete m.pk_away;
   } else {
     m.home_score=v.hs; m.away_score=v.as; m.played=true;
+    if(v.ph!=null){ m.pk_home=v.ph; m.pk_away=v.pa; } else { delete m.pk_home; delete m.pk_away; }
     // 初めて結果が入ったときだけ保存順を記録する（スコアの訂正では試合の時系列を動かさない）
     if(!before.played || before.playedAt===undefined) m.playedAt = db._seq++;
   }
@@ -1404,6 +1479,7 @@ function commitMatch(yr,div,id,v){
     // 書き込めなかった場合は画面と実データの食い違いを防ぐため元に戻す
     Object.assign(m, before);
     if(before.playedAt===undefined) delete m.playedAt;
+    if(before.pk_home==null){ delete m.pk_home; delete m.pk_away; }
     db._seq = seqBefore;
     return;
   }
@@ -1416,8 +1492,11 @@ function commitMatch(yr,div,id,v){
   if(btn){ btn.textContent = m.played?'✓ 保存済':'保存'; btn.classList.toggle('saved', m.played); }
   if(card){
     card.classList.toggle('is-played', m.played);
-    card.querySelector('.mteam.home')?.classList.toggle('win', m.played && m.home_score>m.away_score);
-    card.querySelector('.mteam.away')?.classList.toggle('win', m.played && m.away_score>m.home_score);
+    const pkh=pkOutcome(m,true);
+    card.querySelector('.mteam.home')?.classList.toggle('win', m.played && (m.home_score>m.away_score || (m.home_score===m.away_score && pkh==='W')));
+    card.querySelector('.mteam.away')?.classList.toggle('win', m.played && (m.away_score>m.home_score || (m.home_score===m.away_score && pkh==='L')));
+    const pkRow=document.getElementById(`pk-${div}-${id}`);
+    if(pkRow && !m.played) pkRow.hidden = true;
     const rk=card.dataset.rk, cnt=document.getElementById(`rcount-${div}-${rk}`);
     if(cnt){
       const [l,r]=rk.split('-').map(Number);
@@ -1630,6 +1709,11 @@ function computePromotionMoves(prevYr){
 
 // 日程作成方式（自動/手動）の選択状態
 let scheduleMode = 'auto';
+// 合同リーグにするときは昇降格がないので、昇格枠・降格枠を0に固定する
+function onJointToggle(){
+  const on = document.getElementById('s-joint').checked;
+  ['s-promote','s-relegate'].forEach(id=>{ const el=document.getElementById(id); if(!el) return; if(on){ el.dataset.prev=el.value; el.value=0; } else if(el.dataset.prev!==undefined){ el.value=el.dataset.prev; } el.disabled=on; });
+}
 function setScheduleMode(mode){
   scheduleMode = mode;
   document.getElementById('sched-mode-auto').classList.toggle('active', mode==='auto');
@@ -1659,14 +1743,18 @@ function startNewSeason(){
 
   // シーズン個別の設定（変則シーズン対応）
   const seasonLabel = document.getElementById('s-label')?.value.trim() || '';
-  const promoteN = Math.max(0, parseInt(document.getElementById('s-promote')?.value) || 0);
-  const relegateN = Math.max(0, parseInt(document.getElementById('s-relegate')?.value) || 0);
+  const joint = !!document.getElementById('s-joint')?.checked; // 2部・3部の合同リーグ
+  const legs = parseInt(document.getElementById('s-legs')?.value) === 1 ? 1 : 2;
+  const promoteN = joint ? 0 : Math.max(0, parseInt(document.getElementById('s-promote')?.value) || 0);
+  const relegateN = joint ? 0 : Math.max(0, parseInt(document.getElementById('s-relegate')?.value) || 0);
   const displayName = seasonLabel || `${yr}年目`;
 
   const prevYr = String(yr-1);
   let moves = [];
   let confirmMsg = `「${displayName}」を開始します（${scheduleMode==='auto'?'自動日程':'手動日程'}）。\n`;
-  confirmMsg += `昇格枠 ${promoteN} ／ 降格枠 ${relegateN}${(promoteN===0&&relegateN===0)?'（昇降格なし）':''}\n\n`;
+  confirmMsg += `昇格枠 ${promoteN} ／ 降格枠 ${relegateN}${(promoteN===0&&relegateN===0)?'（昇降格なし）':''}／総当たり${legs}回\n`;
+  if(joint) confirmMsg += `${getDivName(2)}と${getDivName(3)}を合同リーグにします（同点はPK戦）。\n`;
+  confirmMsg += `\n`;
 
   if(db.seasons[prevYr]){
     moves = computePromotionMoves(prevYr);
@@ -1685,7 +1773,9 @@ function startNewSeason(){
     const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
     return {div, count: teams.length};
   });
-  confirmMsg += preview.map(p=>`${getDivName(p.div)}: ${p.count}チーム`).join('\n');
+  confirmMsg += joint
+    ? `${getDivName(1)}: ${preview[0].count}チーム\n${getDivName(2)}・${getDivName(3)}合同: ${preview[1].count+preview[2].count}チーム`
+    : preview.map(p=>`${getDivName(p.div)}: ${p.count}チーム`).join('\n');
   if(scheduleMode==='manual'){
     confirmMsg += `\n\n※手動日程モード：試合は空の状態で開始します。`;
   }
@@ -1742,22 +1832,27 @@ function startNewSeason(){
 
   const started = [];
   const skipped = [];
+  const activeOf = div => Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
   [1,2,3].forEach(div=>{
-    const rawTeams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
-    const teams = orderTeamsByPrevSeason(rawTeams, div);
+    if(joint && div===3) return; // 3部は2部の合同リーグに含める
+    // 合同リーグ：2部のチーム（前年度順）→3部のチーム（前年度順）の順に並べる
+    const teams = (joint && div===2)
+      ? [...orderTeamsByPrevSeason(activeOf(2), 2), ...orderTeamsByPrevSeason(activeOf(3), 3)]
+      : orderTeamsByPrevSeason(activeOf(div), div);
+    const special = (joint && div===2) ? { joint:true, pkDraw:true } : {};
     if(scheduleMode==='manual'){
       db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
       db.seasons[String(yr)].divisions[String(div)] = {
         teams, matches:[], started:true, scheduleMode:'manual',
-        promoteN, relegateN,
+        promoteN, relegateN, ...special,
         playoff: {enabled:div>1 && promoteN>0, playoffN:4, matches:[], winner:null}
       };
       started.push(div);
     } else if(teams.length>=2){
       db.seasons[String(yr)] = db.seasons[String(yr)] || {divisions:{}};
       db.seasons[String(yr)].divisions[String(div)] = {
-        teams, matches:genMatches(teams), started:true, scheduleMode:'auto',
-        promoteN, relegateN,
+        teams, matches:genMatches(teams, legs), started:true, scheduleMode:'auto',
+        promoteN, relegateN, ...special,
         playoff: {enabled:div>1 && promoteN>0, playoffN:4, matches:[], winner:null}
       };
       started.push(div);
@@ -4881,6 +4976,7 @@ function predictStandings(yr, div, simulations=20000, opts){
   const ptsSamples = {}; // team -> 各試行の最終勝点（80%の幅の算出用）
   teams.forEach(t=>{ ptsSum[t]=0; ptsSamples[t]=new Int32Array(400); });
 
+  const pkDraw = !!d.pkDraw; // 同点はPK戦（PK勝ち2点・PK負け1点）
   for(let s=0; s<simulations; s++){
     const stats = {};
     teams.forEach(t=>stats[t]={pts:baseStats[t].pts, gd:baseStats[t].gf-baseStats[t].ga, gf:baseStats[t].gf});
@@ -4892,6 +4988,7 @@ function predictStandings(yr, div, simulations=20000, opts){
       stats[h].gf += gh; stats[a].gf += ga;
       if(gh>ga){ stats[h].pts+=3; }
       else if(gh<ga){ stats[a].pts+=3; }
+      else if(pkDraw){ if(Math.random()<0.5){ stats[h].pts+=2; stats[a].pts++; } else { stats[h].pts++; stats[a].pts+=2; } }
       else { stats[h].pts++; stats[a].pts++; }
     }
     const ranked = teams.slice().sort((x,y)=>stats[y].pts-stats[x].pts||stats[y].gd-stats[x].gd||stats[y].gf-stats[x].gf);
@@ -4996,7 +5093,7 @@ function computeRankBounds(yr, div){
     const guaranteedAbove = rows.filter(x=>x.team!==t && minPts[x.team] > maxPts[t]).length;
     // 最悪順位：自分が全敗(minPts)でも、逆転不可能（相手の最大値がこちらの最小値未満）なチームの数だけ下から数えて安全
     const guaranteedBelow = rows.filter(x=>x.team!==t && maxPts[x.team] < minPts[t]).length;
-    bounds[t] = { best: guaranteedAbove+1, worst: n-guaranteedBelow };
+    bounds[t] = { best: guaranteedAbove+1, worst: n-guaranteedBelow, maxPts: maxPts[t] };
   });
   return bounds;
 }
@@ -5086,7 +5183,7 @@ function raceDefs(yr, div, n){
   const hasLower = div<3 && getSeasons().some(y=>getDivData(y, div+1));
   const rN = hasLower ? (d.relegateN!==undefined ? d.relegateN : AUTO_RELEGATE_N) : 0;
   const defs = [];
-  if(div===1) defs.push({key:'title', label:'優勝争い', from:1, to:1, line:1, lineLabel:'優勝ライン'});
+  if(div===1 || d.joint) defs.push({key:'title', label:'優勝争い', from:1, to:1, line:1, lineLabel:'優勝ライン'});
   if(pN>0) defs.push({key:'promote', label:'昇格争い', from:1, to:pN, line:pN, lineLabel:'自動昇格ライン'});
   // PO争いは「PO圏以上（自動昇格を含む、例：6位以上）」に入れるかで見る
   if(poN>0) defs.push({key:'playoff', label:'PO争い', from:1, to:pN+poN, line:pN+poN, lineLabel:'PO圏ライン'});
@@ -5119,66 +5216,106 @@ function raceRangeLabel(def){
   return def.from===1 ? `${def.to}位以上` : `${def.from}〜${def.to}位`;
 }
 
-// 最終勝点の箱ひげ図。チームは現在の順位順。
-//  箱＝25〜75%、中の線＝中央値、ひげ＝5〜95%、▲＝獲得済みの勝点（これより下にはならない）、薄い帯＝開幕前予測（10〜90%）
-function boxplotHtml(yr, div, key, rowsAll, currentRankMap){
-  const pre = preseasonCache[key]?.data || {};
+// 箱ひげ図（勝点版／順位版）。チームは現在の順位順。
+//  箱＝25〜75%、中の線＝中央値、ひげ＝5〜95%、▲＝現在（勝点版は獲得済みの勝点、順位版は現在の順位）、
+//  ◇＝残り全勝したときに届く場所（勝点版は最大勝点、順位版は到達しうる最高順位）、薄い帯＝開幕前予測（勝点版のみ）
+// 順位の分布（rankDist：各順位の確率%）から、下から q の割合の位置にある順位を返す
+function rankQuantile(dist, q){
+  let c = 0;
+  for(let i=0;i<dist.length;i++){ c += dist[i]; if(c >= q*100 - 1e-9) return i+1; }
+  return dist.length;
+}
+function boxplotHtml(yr, div, key, rowsAll, currentRankMap, byRank=false){
+  const pre = byRank ? {} : (preseasonCache[key]?.data || {});
   const pred = predictCache[key];
-  const defs = raceDefs(yr, div, rowsAll.length);
+  const n = rowsAll.length;
+  const bounds = computeRankBounds(yr, div);
+  const defs = raceDefs(yr, div, n);
   if(boxFocus!=='all' && !defs.some(d=>d.key===boxFocus)) boxFocus = 'all';
   const def = defs.find(d=>d.key===boxFocus);
   const inRace = def ? teamsInRace(rowsAll, def) : null;
   const rows = inRace ? rowsAll.filter(r=>inRace.has(r.team)) : rowsAll;
-  const linePts = def ? pred.rankLinePts?.[def.line-1] : null;
+
+  // 1チームぶんの値：q＝[5%,25%,50%,75%,95%]、cur＝現在、best＝全勝時の到達点
+  const valuesOf = r => byRank
+    ? { q:[0.05,0.25,0.5,0.75,0.95].map(p=>rankQuantile(r.rankDist||[], p)), cur:currentRankMap[r.team], best:bounds[r.team]?.best }
+    : { q:r.ptsQ, cur:r.currentPts, best:bounds[r.team]?.maxPts };
+  const V = Object.fromEntries(rows.map(r=>[r.team, valuesOf(r)]));
+  // 境目の線：勝点版は境目の順位になったチームの勝点の中央値、順位版は順位の区切り（例：6位と7位の間）
+  const lineVal = def ? (byRank ? def.line+0.5 : pred.rankLinePts?.[def.line-1]) : null;
+
+  // 横軸の範囲：箱とひげが収まる範囲（全体表示では▲・開幕前予測も含める）。順位版は◇も含める
   const vals = [];
-  if(linePts!=null) vals.push(linePts);
-  // 絞り込み時は箱とひげに合わせて軸を拡大する（獲得済み▲と開幕前予測の帯は範囲外ならはみ出させない）
-  rows.forEach(r=>{ vals.push(r.ptsQ[0], r.ptsQ[4]); if(!def){ vals.push(r.currentPts); const p=pre[r.team]; if(p) vals.push(p.lo, p.hi); } });
-  const span0 = Math.max(1, Math.max(...vals) - Math.min(...vals));
-  const step = [2,5,10,20,50].find(st=>span0/st<=6) || 100;
-  const lo = Math.floor(Math.min(...vals)/step)*step, hi = Math.ceil(Math.max(...vals)/step)*step || step;
-  const x = v => (Math.max(0, Math.min(1, (v-lo)/(hi-lo)))*100).toFixed(2) + '%';
-  const ticks = []; for(let v=lo; v<=hi; v+=step) ticks.push(v);
+  if(lineVal!=null) vals.push(lineVal);
+  rows.forEach(r=>{ const v=V[r.team]; vals.push(v.q[0], v.q[4]);
+    if(byRank){ if(v.best) vals.push(v.best); if(!def && v.cur) vals.push(v.cur); }
+    else if(!def){ vals.push(v.cur); const p=pre[r.team]; if(p) vals.push(p.lo, p.hi); } });
+  let lo, hi, ticks = [];
+  if(byRank){
+    lo = Math.min(...vals) - 0.5; hi = Math.max(...vals) + 0.5;
+    const span = hi-lo, step = span<=12 ? 1 : span<=24 ? 2 : 5;
+    for(let v=Math.ceil(lo/step)*step || 1; v<=hi; v+=step) if(v>=1) ticks.push(v);
+    if(!ticks.includes(1) && lo<1) ticks.unshift(1);
+  } else {
+    const span0 = Math.max(1, Math.max(...vals) - Math.min(...vals));
+    const step = [2,5,10,20,50].find(st=>span0/st<=6) || 100;
+    lo = Math.floor(Math.min(...vals)/step)*step; hi = Math.ceil(Math.max(...vals)/step)*step || step;
+    for(let v=lo; v<=hi; v+=step) ticks.push(v);
+  }
+  const frac = v => byRank ? (v-lo)/(hi-lo) : (v-lo)/(hi-lo);
+  const x = v => (Math.max(0, Math.min(1, frac(v)))*100).toFixed(2) + '%';
   const col = divColor(div);
   const grid = ticks.map(v=>`<span class="bx-grid" style="left:${x(v)}"></span>`).join('');
+  const lineHtml = lineVal!=null ? `<span class="bx-line" style="left:${x(lineVal)}"></span>` : '';
+  const unit = v => byRank ? `${v}位` : `${v}点`;
+
   let html = `<div class="tabs bx-focus">
     <div class="tab ${!def?'active':''}" onclick="setBoxFocus('all')">全チーム</div>
     ${defs.map(d=>`<div class="tab ${def===d?'active':''}" onclick="setBoxFocus('${d.key}')">${d.label}</div>`).join('')}
   </div>`;
-  html += `<div class="slbl">${def?`${def.label}（${raceRangeLabel(def)}の可能性がある${rows.length}チーム）`:`最終勝点の予想分布（${rows.length}チーム）`}</div><div class="card bx-card">`;
-  const lineHtml = linePts!=null ? `<span class="bx-line" style="left:${x(linePts)}"></span>` : '';
+  html += `<div class="slbl">${def?`${def.label}（${raceRangeLabel(def)}の可能性がある${rows.length}チーム）`:`${byRank?'最終順位':'最終勝点'}の予想分布（${rows.length}チーム）`}</div><div class="card bx-card">`;
   html += `<div class="bx-row bx-head"><span></span><div class="bx-plot">${ticks.map(v=>`<span class="bx-tick" style="left:${x(v)}">${v}</span>`).join('')}</div><span class="bx-val">${def?(def.from===1&&def.to>1?`${def.to}位内`:'確率'):'中央値'}</span></div>`;
   rows.forEach(r=>{
-    const [p5,q1,med,q3,p95] = r.ptsQ;
+    const v = V[r.team];
+    const [p5,q1,med,q3,p95] = v.q;
+    // 順位版は「1位が左」。箱の左端は小さい順位（＝上位）側
+    const box = (a,b,cls,extra='') => `<span class="${cls}" style="left:${x(Math.min(a,b))};width:calc(${x(Math.max(a,b))} - ${x(Math.min(a,b))});${extra}"></span>`;
     const p = pre[r.team];
-    html += `<div class="bx-row" title="${r.team}：中央値${med}点（50%の確率で${q1}〜${q3}点、90%の確率で${p5}〜${p95}点）">
+    const bestOut = v.best!=null && frac(v.best)>1;
+    html += `<div class="bx-row" title="${r.team}：中央値${unit(med)}（50%の確率で${unit(q1)}〜${unit(q3)}、90%の確率で${unit(p5)}〜${unit(p95)}）${v.best!=null?`／残り全勝なら${unit(v.best)}`:''}">
       <span class="bx-team"><span class="bx-rk">${currentRankMap[r.team]||''}</span>${r.team}</span>
       <div class="bx-plot">${grid}${lineHtml}
-        ${p && !def ?`<span class="bx-pre" style="left:${x(p.lo)};width:calc(${x(p.hi)} - ${x(p.lo)})"></span>`:''}
-        <span class="bx-whisk" style="left:${x(p5)};width:calc(${x(p95)} - ${x(p5)})"></span>
-        <span class="bx-box" style="left:${x(q1)};width:calc(${x(q3)} - ${x(q1)});border-color:${col};background:${divTint(div)};"></span>
+        ${p && !def ? box(p.lo, p.hi, 'bx-pre') : ''}
+        ${box(p5, p95, 'bx-whisk')}
+        ${box(q1, byRank&&q1===q3 ? q3+0.0001 : q3, 'bx-box', `border-color:${col};background:${divTint(div)};`)}
         <span class="bx-med" style="left:${x(med)};background:${col};"></span>
-        ${(!def || r.currentPts>=lo) ? `<span class="bx-cur" style="left:${x(r.currentPts)}"></span>` : ''}
+        ${(v.cur!=null && frac(v.cur)>=0 && frac(v.cur)<=1) ? `<span class="bx-cur" style="left:${x(v.cur)}"></span>` : ''}
+        ${v.best!=null ? (bestOut ? `<span class="bx-best-out">◇${v.best}</span>` : `<span class="bx-best" style="left:${x(v.best)}"></span>`) : ''}
       </div>
-      <span class="bx-val">${def?`${inRace.get(r.team)}%`:med}</span>
+      <span class="bx-val">${def?`${inRace.get(r.team)}%`:unit(med)}</span>
     </div>`;
   });
   html += `</div>`;
-  if(def) html += `<p class="bx-note"><span class="bx-line-key"></span>${def.lineLabel}の目安：<b>${linePts}点</b>（シミュレーションで${def.line}位になったチームの最終勝点の中央値）。右端の%は${raceRangeLabel(def)}に入る確率です。</p>`;
+  if(def){
+    html += byRank
+      ? `<p class="bx-note"><span class="bx-line-key"></span>${raceRangeLabel(def)}の境目です。右端の%は${raceRangeLabel(def)}に入る確率です。</p>`
+      : `<p class="bx-note"><span class="bx-line-key"></span>${def.lineLabel}の目安：<b>${lineVal}点</b>（シミュレーションで${def.line}位になったチームの最終勝点の中央値）。右端の%は${raceRangeLabel(def)}に入る確率です。</p>`;
+  }
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.7;">
-    ※ シミュレーション（2万回）で出た最終勝点の散らばりです。<b>箱</b>＝50%の確率で収まる範囲（25〜75%）、箱の中の<b>線</b>＝中央値、<b>ひげ</b>＝90%の範囲（5〜95%）。<br>
-    ※ <b>▲</b>＝すでに獲得した勝点（最終勝点はこれより下になりません）、<b>薄い帯</b>＝開幕前予測（80%の幅）。帯から箱がずれているほど、開幕前の見立てから外れています。<br>
-    ※ 「○○争い」では、その順位帯に入る確率が${RACE_MIN_P}〜${RACE_MAX_P}%のチーム（まだ決まっていないチーム）と、ほぼ確定しているチームのうち境目に近い2チームを表示し、横軸をそのチームに合わせて拡大します（見やすさのため、開幕前予測の帯は出しません）。</p>`;
+    ※ シミュレーション（2万回）で出た最終${byRank?'順位':'勝点'}の散らばりです。<b>箱</b>＝50%の確率で収まる範囲（25〜75%）、箱の中の<b>線</b>＝中央値、<b>ひげ</b>＝90%の範囲（5〜95%）。${byRank?'左ほど上位です。':''}<br>
+    ※ <b>▲</b>＝${byRank?'現在の順位':'すでに獲得した勝点（最終勝点はこれより下になりません）'}、<b>◇</b>＝残り試合に全勝したときに${byRank?'届きうる最高順位（他チームの結果しだい）':'届く勝点（グラフの外なら右端に数値で表示）'}。${byRank?'':'<b>薄い帯</b>＝開幕前予測（80%の幅）。'}<br>
+    ※ 「○○争い」では、その順位帯に入る確率が${RACE_MIN_P}〜${RACE_MAX_P}%のチーム（まだ決まっていないチーム）と、ほぼ確定しているチームのうち境目に近い2チームを表示し、横軸をそのチームに合わせて拡大します${byRank?'':'（見やすさのため、開幕前予測の帯は出しません）'}。</p>`;
   return html;
 }
 
-// ヒートマップ画面の表示形式（'heat'＝順位確率のヒートマップ、'box'＝最終勝点の箱ひげ図）
-let heatmapView = 'heat';
+// ヒートマップ画面の表示形式（'box'＝最終勝点の箱ひげ図、'rankbox'＝最終順位の箱ひげ図、'heat'＝順位確率のヒートマップ）
+let heatmapView = 'box'; // 最初は勝点の箱ひげ図
 function setHeatmapView(v){ heatmapView = v; renderHeatmap(); }
 function heatmapViewTabsHtml(){
   return `<div class="tabs" style="padding:8px 12px 0;">
+    <div class="tab ${heatmapView==='box'?'active':''}" onclick="setHeatmapView('box')">勝点の分布</div>
+    <div class="tab ${heatmapView==='rankbox'?'active':''}" onclick="setHeatmapView('rankbox')">順位の分布</div>
     <div class="tab ${heatmapView==='heat'?'active':''}" onclick="setHeatmapView('heat')">順位の確率</div>
-    <div class="tab ${heatmapView==='box'?'active':''}" onclick="setHeatmapView('box')">勝点の分布（箱ひげ図）</div>
   </div>`;
 }
 
@@ -5189,6 +5326,7 @@ function renderHeatmap(){
   if(!yr){ el.innerHTML='<div class="loading">シーズンがありません</div>'; return; }
 
   const key = predictCacheKey(yr, div);
+  if(!getDivData(yr, div)){ el.innerHTML = jointNoteHtml(yr, div) || '<div class="loading">この部門のデータはありません</div>'; return; }
   const pred = predictCache[key];
   if(!pred){ runPrediction(); return; }
 
@@ -5198,7 +5336,7 @@ function renderHeatmap(){
   currentStandings.forEach(r=>{ currentRankMap[r.team]=r.rank; });
   const predByCurrentOrder = [...pred].sort((a,b)=>(currentRankMap[a.team]||999)-(currentRankMap[b.team]||999));
 
-  if(heatmapView==='box'){ el.innerHTML = heatmapViewTabsHtml() + boxplotHtml(yr, div, key, predByCurrentOrder, currentRankMap); return; }
+  if(heatmapView==='box' || heatmapView==='rankbox'){ el.innerHTML = heatmapViewTabsHtml() + boxplotHtml(yr, div, key, predByCurrentOrder, currentRankMap, heatmapView==='rankbox'); return; }
 
   const n = pred.length;
   const baseColor = DIV_RGB[div] || '107,124,147'; // r,g,b（部門カラーに合わせる）
