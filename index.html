@@ -5088,7 +5088,8 @@ function raceDefs(yr, div, n){
   const defs = [];
   if(div===1) defs.push({key:'title', label:'優勝争い', from:1, to:1, line:1, lineLabel:'優勝ライン'});
   if(pN>0) defs.push({key:'promote', label:'昇格争い', from:1, to:pN, line:pN, lineLabel:'自動昇格ライン'});
-  if(poN>0) defs.push({key:'playoff', label:'PO争い', from:pN+1, to:pN+poN, line:pN+poN, lineLabel:'PO圏ライン'});
+  // PO争いは「PO圏以上（自動昇格を含む、例：6位以上）」に入れるかで見る
+  if(poN>0) defs.push({key:'playoff', label:'PO争い', from:1, to:pN+poN, line:pN+poN, lineLabel:'PO圏ライン'});
   if(rN>0 && rN<n) defs.push({key:'relegate', label:'降格争い', from:n-rN+1, to:n, line:n-rN, lineLabel:'残留ライン'});
   return defs;
 }
@@ -5112,6 +5113,11 @@ function teamsInRace(pred, def){
 }
 let boxFocus = 'all'; // 箱ひげ図の絞り込み（'all' または raceDefs の key）
 function setBoxFocus(k){ boxFocus = k; renderHeatmap(); }
+// 順位帯の表記（1〜6位なら「6位以上」、14〜16位なら「14〜16位」）
+function raceRangeLabel(def){
+  if(def.from===def.to) return `${def.from}位`;
+  return def.from===1 ? `${def.to}位以上` : `${def.from}〜${def.to}位`;
+}
 
 // 最終勝点の箱ひげ図。チームは現在の順位順。
 //  箱＝25〜75%、中の線＝中央値、ひげ＝5〜95%、▲＝獲得済みの勝点（これより下にはならない）、薄い帯＝開幕前予測（10〜90%）
@@ -5139,9 +5145,9 @@ function boxplotHtml(yr, div, key, rowsAll, currentRankMap){
     <div class="tab ${!def?'active':''}" onclick="setBoxFocus('all')">全チーム</div>
     ${defs.map(d=>`<div class="tab ${def===d?'active':''}" onclick="setBoxFocus('${d.key}')">${d.label}</div>`).join('')}
   </div>`;
-  html += `<div class="slbl">${def?`${def.label}（${def.from===def.to?`${def.from}位`:`${def.from}〜${def.to}位`}の可能性がある${rows.length}チーム）`:`最終勝点の予想分布（${rows.length}チーム）`}</div><div class="card bx-card">`;
+  html += `<div class="slbl">${def?`${def.label}（${raceRangeLabel(def)}の可能性がある${rows.length}チーム）`:`最終勝点の予想分布（${rows.length}チーム）`}</div><div class="card bx-card">`;
   const lineHtml = linePts!=null ? `<span class="bx-line" style="left:${x(linePts)}"></span>` : '';
-  html += `<div class="bx-row bx-head"><span></span><div class="bx-plot">${ticks.map(v=>`<span class="bx-tick" style="left:${x(v)}">${v}</span>`).join('')}</div><span class="bx-val">${def?'確率':'中央値'}</span></div>`;
+  html += `<div class="bx-row bx-head"><span></span><div class="bx-plot">${ticks.map(v=>`<span class="bx-tick" style="left:${x(v)}">${v}</span>`).join('')}</div><span class="bx-val">${def?(def.from===1&&def.to>1?`${def.to}位内`:'確率'):'中央値'}</span></div>`;
   rows.forEach(r=>{
     const [p5,q1,med,q3,p95] = r.ptsQ;
     const p = pre[r.team];
@@ -5158,7 +5164,7 @@ function boxplotHtml(yr, div, key, rowsAll, currentRankMap){
     </div>`;
   });
   html += `</div>`;
-  if(def) html += `<p class="bx-note"><span class="bx-line-key"></span>${def.lineLabel}の目安：<b>${linePts}点</b>（シミュレーションで${def.line}位になったチームの最終勝点の中央値）。右端の%は${def.from===def.to?`${def.from}位`:`${def.from}〜${def.to}位`}に入る確率です。</p>`;
+  if(def) html += `<p class="bx-note"><span class="bx-line-key"></span>${def.lineLabel}の目安：<b>${linePts}点</b>（シミュレーションで${def.line}位になったチームの最終勝点の中央値）。右端の%は${raceRangeLabel(def)}に入る確率です。</p>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.7;">
     ※ シミュレーション（2万回）で出た最終勝点の散らばりです。<b>箱</b>＝50%の確率で収まる範囲（25〜75%）、箱の中の<b>線</b>＝中央値、<b>ひげ</b>＝90%の範囲（5〜95%）。<br>
     ※ <b>▲</b>＝すでに獲得した勝点（最終勝点はこれより下になりません）、<b>薄い帯</b>＝開幕前予測（80%の幅）。帯から箱がずれているほど、開幕前の見立てから外れています。<br>
