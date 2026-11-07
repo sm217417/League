@@ -274,7 +274,9 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 .bx-note{font-size:11px;color:var(--text);padding:0 13px 6px;line-height:1.7;}
 .bx-line-key{display:inline-block;width:0;height:11px;border-left:2px dashed var(--gold);margin-right:6px;vertical-align:-1px;}
 .joint-chk{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.6;margin:0 0 12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);cursor:pointer;}
-.joint-chk input{margin-top:3px;flex:0 0 auto;}
+.joint-chk[hidden]{display:none;}
+.joint-chk input[type="checkbox"]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;min-width:18px;margin:1px 0 0;padding:0;flex:0 0 18px;border:none;border-radius:0;box-shadow:none;background:none;accent-color:var(--g);}
+.joint-chk > span{flex:1;min-width:0;}
 .joint-banner{font-size:11px;line-height:1.6;margin:0 12px 8px;padding:7px 10px;border-radius:8px;background:var(--gold2);color:var(--text);}
 .pkrow{display:flex;align-items:center;gap:3px;margin-top:2px;}
 .pkrow[hidden]{display:none;}
@@ -386,7 +388,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
           <label for="s-legs">総当たりの回数</label>
           <select id="s-legs"><option value="2">2回（ホーム＆アウェイ）</option><option value="1">1回</option></select>
         </div>
-        <label class="joint-chk" for="s-joint">
+        <label class="joint-chk" for="s-joint" id="joint-wrap" hidden>
           <input type="checkbox" id="s-joint" onchange="onJointToggle()">
           <span><b>2部と3部を合同リーグにする</b><br>
           <span style="font-size:10px;color:var(--muted);">2部・3部の全チームで1つの順位表にします（百年構想リーグのような特別大会向け）。昇降格はなし、90分で同点ならPK戦（PK勝ち2点・PK負け1点）。所属部門は次のシーズンにそのまま戻ります。</span></span>
@@ -1716,6 +1718,11 @@ function onJointToggle(){
 }
 function setScheduleMode(mode){
   scheduleMode = mode;
+  // 合同リーグは手動日程（実在リーグの再現）のときだけ使う。自動に戻したらチェックも外す
+  const jw = document.getElementById('joint-wrap');
+  if(jw) jw.hidden = mode!=='manual';
+  const jc = document.getElementById('s-joint');
+  if(jc && mode!=='manual' && jc.checked){ jc.checked=false; onJointToggle(); }
   document.getElementById('sched-mode-auto').classList.toggle('active', mode==='auto');
   document.getElementById('sched-mode-manual').classList.toggle('active', mode==='manual');
   const desc = document.getElementById('sched-mode-desc');
@@ -1743,7 +1750,7 @@ function startNewSeason(){
 
   // シーズン個別の設定（変則シーズン対応）
   const seasonLabel = document.getElementById('s-label')?.value.trim() || '';
-  const joint = !!document.getElementById('s-joint')?.checked; // 2部・3部の合同リーグ
+  const joint = scheduleMode==='manual' && !!document.getElementById('s-joint')?.checked; // 2部・3部の合同リーグ（手動日程のみ）
   const legs = parseInt(document.getElementById('s-legs')?.value) === 1 ? 1 : 2;
   const promoteN = joint ? 0 : Math.max(0, parseInt(document.getElementById('s-promote')?.value) || 0);
   const relegateN = joint ? 0 : Math.max(0, parseInt(document.getElementById('s-relegate')?.value) || 0);
