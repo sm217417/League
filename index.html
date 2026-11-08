@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
-<!-- WINNER PRO v2.1.2（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
+<!-- WINNER PRO v2.2.0（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -550,6 +550,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 .st-head{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 6px;border-bottom:1px solid var(--divider);}
 .st-form{font-size:12px;font-weight:800;padding:3px 9px;border-radius:3px;background:var(--gold);color:#0c1a33;}
 .st-card .club-note{padding:4px 12px 8px;}
+
+/* ══ v2.2.0：スタイル分析 ══ */
+.style-map{width:100%;max-width:340px;height:auto;overflow:visible;}
+.sa-corr{font-size:12px;line-height:1.7;margin-bottom:8px;}
+.sa-sub{font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 6px;}
+.sa-bar{display:flex;align-items:center;gap:8px;margin:4px 0;}
+.sa-bl{flex:0 0 8.5em;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sa-bt{flex:1;height:8px;background:var(--divider);border-radius:2px;overflow:hidden;min-width:0;}
+.sa-bt span{display:block;height:100%;background:var(--gold);}
+.sa-bv{flex:0 0 34px;text-align:right;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;}
+.sa-bn{flex:0 0 44px;text-align:right;font-size:10px;color:var(--muted);}
+.sa-tbl{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;}
+.sa-tbl th{font-size:10px;padding:6px 4px;background:var(--navy);color:var(--on-navy-muted);white-space:nowrap;}
+.sa-tbl tbody th{background:var(--surface-alt);color:var(--text);text-align:left;}
+.sa-tbl td{text-align:center;padding:6px 4px;border:1px solid var(--divider);font-weight:700;}
+.sa-tbl td small{display:block;font-size:9px;font-weight:400;color:var(--muted);}
+.sa-tbl td.na{color:var(--muted);font-weight:400;}
+.sa-note{font-size:11px;color:var(--muted);line-height:1.7;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -797,6 +815,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
       <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
       <div class="tab" onclick="switchHistTab('snapshot',this)">開幕時R</div>
       <div class="tab" onclick="switchHistTab('club',this)">クラブ特徴</div>
+      <div class="tab" onclick="switchHistTab('stylean',this)">スタイル分析</div>
     </div>
   </div>
   <div id="history-area"></div>
@@ -847,8 +866,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 <script>
 // ══ バージョン ══
 // 新しい版を出すたびに上げる（大きめの更新は真ん中、小さな修正は右端の数字）。履歴は新しい順。
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.2.0';
 const APP_CHANGELOG = [
+  { v:'2.2.0', date:'2026-11-08', notes:[
+    'プレースタイルの軸を2本から始める形に（軸の名前は自由に入力）',
+    '分析に「スタイル分析」を追加：スタイルマップ、スタイルと勝点ペースの相関、スタイル同士の相性表',
+    'スタイルの相性を順位予想・次節予想に反映できるように（実験的・初期設定はオフ）',
+  ]},
   { v:'2.1.2', date:'2026-11-08', notes:[
     '「クラブ特徴」をプレースタイル中心に作り直し（優劣ではなく「どちら寄りか」の軸：ポゼッション↔カウンターなど）',
     'フォーメーションとスタイルのタグを設定できるように',
@@ -2729,6 +2753,7 @@ function switchHistTab(tab, el){
   else if(tab==='snapshot')renderRatingSnapshots();
   else if(tab==='h2h')renderH2HInHistory();
   else if(tab==='club')renderClubParams();
+  else if(tab==='stylean')renderStyleAnalysis();
   else renderHistInseason();
 }
 
@@ -2749,7 +2774,7 @@ function switchHistCategory(cat){
 
 // 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
 const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
-  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis', club:'analysis' };
+  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis', club:'analysis', stylean:'analysis' };
 function restoreHistoryView(){
   const cat = HIST_TAB_CATEGORY[histTab] || 'records';
   HIST_CATEGORY.forEach(c=>{
@@ -3155,15 +3180,13 @@ function showRatingSnapshot(){
 //   formation:{ チーム名:"4-2-3-1" }, tags:{ チーム名:["堅守速攻", …] }, notes:{ チーム名:"メモ" }
 // }
 // 記録・分析用で、順位予想の計算には使わない。
+// 最初は2本の軸から始める（スタイルマップの横軸・縦軸になる）。軸は自由に追加・名前変更できる
 const STYLE_AXES_DEFAULT = [
   ['ポゼッション','カウンター'],
   ['ハイプレス','リトリート'],
-  ['短いパス','ロングボール'],
-  ['サイド攻撃','中央突破'],
-  ['高い最終ライン','低い最終ライン'],
-  ['組織で崩す','個の力で崩す'],
-  ['攻撃的','守備的'],
 ];
+// v2.1.2 で最初に入っていた軸。名前を変えずに一度も使っていないものは、2本スタートに合わせて片付ける
+const STYLE_AXES_OLD_DEFAULT = {a3:['短いパス','ロングボール'],a4:['サイド攻撃','中央突破'],a5:['高い最終ライン','低い最終ライン'],a6:['組織で崩す','個の力で崩す'],a7:['攻撃的','守備的']};
 const STYLE_SCALE = [-3,-2,-1,0,1,2,3];
 const STYLE_SCALE_LABEL = {'-3':'かなり左寄り','-2':'左寄り','-1':'やや左寄り','0':'中間','1':'やや右寄り','2':'右寄り','3':'かなり右寄り'};
 const FORMATIONS = ['4-4-2','4-2-3-1','4-3-3','4-1-4-1','4-3-1-2','3-4-2-1','3-5-2','3-4-3','5-3-2','5-4-1'];
@@ -3177,6 +3200,15 @@ function clubStyleData(){
   const cs = db.clubStyle;
   ['values','formation','tags','notes'].forEach(k=>{ cs[k]=cs[k]||{}; });
   cs.axes = cs.axes||[];
+  if(!cs._v220){
+    cs.axes = cs.axes.filter(ax=>{
+      const old = STYLE_AXES_OLD_DEFAULT[ax.id];
+      const untouched = old && ax.left===old[0] && ax.right===old[1];
+      const used = Object.values(cs.values).some(v=>v[ax.id]!=null);
+      return !(untouched && !used);
+    });
+    cs._v220 = true;
+  }
   return cs;
 }
 let clubTeam = null, clubCompare = '', clubDelArmed = null;
@@ -3291,6 +3323,165 @@ function deleteStyleAxis(id){
   const cs=clubStyleData(); cs.axes=cs.axes.filter(x=>x.id!==id); Object.values(cs.values).forEach(v=>{ delete v[id]; });
   clubDelArmed=null; save(db); renderClubParams();
 }
+// ══ スタイル分析（プレースタイルと勝敗） ══
+// グループ分け：-3〜-1＝左寄り、0＝中間、+1〜+3＝右寄り（未設定のチームは集計に入れない）
+// 注意：プレースタイルは「今の」設定で全シーズンの試合を集計する（シーズンごとのスタイルは持っていない）
+const styleGroup = v => v==null ? null : v<0 ? 0 : v===0 ? 1 : 2;
+const STYLE_MIN_N = 5; // 相性表で数字を出す最低の試合数（視点の数）
+let styleAnSeason = 'all';
+function styleMatchesFor(season){
+  const out = [];
+  getSeasons().forEach(yr=>{
+    if(season!=='all' && yr!==season) return;
+    [1,2,3].forEach(div=>{ (getDivData(yr,div)?.matches||[]).forEach(m=>{ if(m.played) out.push(m); }); });
+  });
+  return out;
+}
+// 1本の軸について：チーム別の勝点ペース、グループ別の勝点ペース、相性表（自チームのグループ×相手のグループ）
+function styleAxisStats(axId, matches){
+  const cs = clubStyleData();
+  const val = t => cs.values[t]?.[axId];
+  const team = {}, cells = [0,1,2].map(()=>[0,1,2].map(()=>({n:0,pts:0,gd:0})));
+  matches.forEach(m=>{
+    [[m.home,m.away],[m.away,m.home]].forEach(([me,op])=>{
+      const r = resultFor(m, me);
+      if(val(me)!=null){ const s = team[me]||(team[me]={n:0,pts:0}); s.n++; s.pts+=r.pts; }
+      const gm = styleGroup(val(me)), go = styleGroup(val(op));
+      if(gm==null || go==null) return;
+      const c = cells[gm][go]; c.n++; c.pts+=r.pts; c.gd+=r.gf-r.ga;
+    });
+  });
+  const teams = Object.entries(team).filter(([_,s])=>s.n>=5).map(([t,s])=>({team:t, v:val(t), ppg:s.pts/s.n, n:s.n}));
+  // 相関係数（スタイルの値 × 勝点ペース）
+  let r = null;
+  if(teams.length>=4){
+    const mx = teams.reduce((a,x)=>a+x.v,0)/teams.length, my = teams.reduce((a,x)=>a+x.ppg,0)/teams.length;
+    let sxy=0,sxx=0,syy=0; teams.forEach(x=>{ sxy+=(x.v-mx)*(x.ppg-my); sxx+=(x.v-mx)**2; syy+=(x.ppg-my)**2; });
+    r = (sxx>0 && syy>0) ? sxy/Math.sqrt(sxx*syy) : null;
+  }
+  const groups = [0,1,2].map(g=>{ const ts=teams.filter(x=>styleGroup(x.v)===g); const n=ts.reduce((a,x)=>a+x.n,0);
+    return { teams:ts.length, n, ppg: n ? ts.reduce((a,x)=>a+x.ppg*x.n,0)/n : null }; });
+  return { teams, r, groups, cells };
+}
+// 相性の「上乗せ分」：自グループ×相手グループの平均得失点差から、自グループの平均と相手グループの平均の影響を引いた残り。
+// 試合数が少ないほど0に寄せる（n/(n+20)）。単位は1試合あたりの得失点差
+function styleInteractions(cells){
+  const rowGD = [0,1,2].map(g=>{ let n=0,gd=0; cells[g].forEach(c=>{n+=c.n;gd+=c.gd;}); return n?gd/n:0; });
+  const colGD = [0,1,2].map(h=>{ let n=0,gd=0; cells.forEach(row=>{n+=row[h].n;gd+=row[h].gd;}); return n?gd/n:0; }); // 相手がhのときの自チームの平均得失点差
+  return cells.map((row,g)=>row.map((c,h)=> c.n ? (c.gd/c.n - rowGD[g] - colGD[h]) * c.n/(c.n+20) : 0));
+}
+function corrWords(r){
+  const a = Math.abs(r);
+  return a<0.2 ? 'ほとんど関係なし' : a<0.4 ? '弱い関係' : a<0.7 ? 'ある程度の関係' : '強い関係';
+}
+// スタイルマップ（1本目×2本目の軸）。同じ位置のチームは少しずらして重ならないようにする
+function styleMapSvg(ax1, ax2){
+  const cs = clubStyleData(); const W=320, H=300, pad=44;
+  const pts = clubTeamsSorted().map(t=>({t, x:cs.values[t]?.[ax1.id], y:cs.values[t]?.[ax2.id]})).filter(p=>p.x!=null && p.y!=null);
+  const X = v => pad + (v+3)/6*(W-2*pad), Y = v => pad + (v+3)/6*(H-2*pad);
+  let g = `<rect x="${pad}" y="${pad}" width="${W-2*pad}" height="${H-2*pad}" fill="none" stroke="var(--border)"/>`;
+  for(let v=-3; v<=3; v++){ g += `<line x1="${X(v)}" y1="${pad}" x2="${X(v)}" y2="${H-pad}" stroke="var(--divider)"/><line x1="${pad}" y1="${Y(v)}" x2="${W-pad}" y2="${Y(v)}" stroke="var(--divider)"/>`; }
+  g += `<line x1="${X(0)}" y1="${pad}" x2="${X(0)}" y2="${H-pad}" stroke="var(--muted)" stroke-dasharray="3 3"/><line x1="${pad}" y1="${Y(0)}" x2="${W-pad}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  const lab = (x,y,t,anchor) => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="var(--muted)">${escHtml(t)}</text>`;
+  g += lab(pad, pad-10, '← '+ax1.left, 'start') + lab(W-pad, pad-10, ax1.right+' →', 'end');
+  g += `<text transform="translate(${pad-12},${pad}) rotate(-90)" text-anchor="end" font-size="10" font-weight="700" fill="var(--muted)">${escHtml(ax2.left)} ↑</text>`;
+  g += `<text transform="translate(${pad-12},${H-pad}) rotate(-90)" text-anchor="start" font-size="10" font-weight="700" fill="var(--muted)">↓ ${escHtml(ax2.right)}</text>`;
+  const seen = {};
+  pts.forEach(p=>{
+    const k=p.x+','+p.y, i=(seen[k]=(seen[k]||0)+1)-1;
+    const ang=i*2.4, rad=i?9:0, cx=X(p.x)+rad*Math.cos(ang), cy=Y(p.y)+rad*Math.sin(ang);
+    const right = cx > W-pad-40; // 右端のチームは名前を左側に出す
+    g += `<circle cx="${cx}" cy="${cy}" r="5" fill="var(--gold)" stroke="var(--navy)" stroke-width="1.5"/><text x="${right?cx-7:cx+7}" y="${cy+(i%2?11:3.5)}" text-anchor="${right?'end':'start'}" font-size="9.5" font-weight="700" fill="var(--text)" paint-order="stroke" stroke="var(--surface)" stroke-width="3">${escHtml(p.t)}</text>`;
+  });
+  return `<svg class="style-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="スタイルマップ">${g}</svg>`;
+}
+function renderStyleAnalysis(){
+  const el = document.getElementById('history-area');
+  const cs = clubStyleData();
+  const seasons = getSeasons();
+  if(styleAnSeason!=='all' && !seasons.includes(styleAnSeason)) styleAnSeason='all';
+  const matches = styleMatchesFor(styleAnSeason);
+  let html = `<div class="club-pick"><select id="stylean-yr" onchange="styleAnSeason=this.value;renderStyleAnalysis()" aria-label="集計するシーズン">
+      <option value="all">全シーズン</option>${seasons.map(y=>`<option value="${y}" ${y===styleAnSeason?'selected':''}>${escHtml(getSeasonLabel(y))}</option>`).join('')}</select></div>`;
+  const nSet = clubTeamsSorted().filter(t=>cs.axes.some(a=>cs.values[t]?.[a.id]!=null)).length;
+  if(cs.axes.length<1 || nSet<2){
+    el.innerHTML = html + `<div class="loading">「クラブ特徴」で、2チーム以上にプレースタイルを設定すると分析できます。</div>`; return;
+  }
+  if(cs.axes.length>=2){
+    html += `<div class="slbl">スタイルマップ（${escHtml(cs.axes[0].left)}↔${escHtml(cs.axes[0].right)} × ${escHtml(cs.axes[1].left)}↔${escHtml(cs.axes[1].right)}）</div>
+      <div class="card"><div class="card-body" style="display:flex;justify-content:center;">${styleMapSvg(cs.axes[0], cs.axes[1])}</div></div>`;
+  }
+  const gl = ax => [ax.left+'寄り', '中間', ax.right+'寄り'];
+  cs.axes.forEach(ax=>{
+    const st = styleAxisStats(ax.id, matches);
+    const names = gl(ax);
+    html += `<div class="slbl">${escHtml(ax.left)} ↔ ${escHtml(ax.right)}</div><div class="card"><div class="card-body">`;
+    if(st.teams.length<2){ html += `<div class="sa-corr">この軸を設定したチームがまだ少ないため、集計できません（2チーム以上・各5試合以上）。</div></div></div>`; return; }
+    // 相関
+    if(st.r!=null){
+      const dir = st.r>0 ? ax.right : ax.left;
+      html += `<div class="sa-corr"><b>r = ${st.r.toFixed(2)}</b>（${st.teams.length}チーム）… ${corrWords(st.r)}${Math.abs(st.r)>=0.2?`。<b>${escHtml(dir)}</b>寄りのチームほど勝点ペースが高い傾向`:''}</div>`;
+    } else html += `<div class="sa-corr">相関は、このスタイルを設定した4チーム以上（各5試合以上）で計算します。</div>`;
+    // グループ別の勝点ペース
+    const maxP = 3;
+    html += `<div class="sa-sub">グループ別の勝点ペース（1試合あたり）</div>`;
+    st.groups.forEach((g,i)=>{ html += `<div class="sa-bar"><span class="sa-bl">${escHtml(names[i])}</span><span class="sa-bt"><span style="width:${g.ppg!=null?g.ppg/maxP*100:0}%"></span></span><span class="sa-bv">${g.ppg!=null?g.ppg.toFixed(2):'—'}</span><span class="sa-bn">${g.teams}チーム</span></div>`; });
+    // 相性表
+    const allN = st.cells.flat().reduce((a,c)=>a+c.n,0), allP = st.cells.flat().reduce((a,c)=>a+c.pts,0);
+    const avg = allN ? allP/allN : 1.4;
+    html += `<div class="sa-sub">相性表（行のスタイルのチームが、列のスタイルの相手と戦ったときの勝点ペース）</div>
+      <div class="tbl-scroll"><table class="sa-tbl"><thead><tr><th>自分＼相手</th>${names.map(n=>`<th>${escHtml(n)}</th>`).join('')}</tr></thead><tbody>`;
+    st.cells.forEach((row,g)=>{
+      html += `<tr><th>${escHtml(names[g])}</th>`;
+      row.forEach(c=>{
+        if(c.n<STYLE_MIN_N){ html += `<td class="na">—<small>${c.n}試合</small></td>`; return; }
+        const p=c.pts/c.n, d=p-avg, a=Math.min(1,Math.abs(d)/0.8);
+        const bg = d>=0 ? `color-mix(in srgb, var(--gold) ${Math.round(a*45)}%, transparent)` : `color-mix(in srgb, var(--red) ${Math.round(a*35)}%, transparent)`;
+        html += `<td style="background:${bg}">${p.toFixed(2)}<small>${c.n}試合</small></td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div><p class="sa-note">平均は ${avg.toFixed(2)}。黄色いほど相性が良く、赤いほど悪い組み合わせです。${STYLE_MIN_N}試合未満の組み合わせは「—」。</p></div></div>`;
+  });
+  // 予測への反映
+  const lv = db.config.styleInPredict||0;
+  html += `<div class="slbl">順位予想への反映（実験的）</div><div class="card"><div class="card-body">
+      <div class="tabs" style="padding:0 0 8px;">${['反映しない','弱く反映','やや強く反映'].map((t,i)=>`<div class="tab ${lv===i?'active':''}" onclick="setStyleInPredict(${i})">${t}</div>`).join('')}</div>
+      <p class="sa-note" style="margin:0;">反映すると、相性表から「チームの強さだけでは説明できないスタイル同士の相性」を取り出し、各試合の期待得点を補正します（弱く＝最大±4%、やや強く＝最大±8%）（試合数が少ない組み合わせほど効きを弱めます）。順位予想・次節予想・開幕前予測に使われます。</p>
+    </div></div>`;
+  html += `<p class="note-sm">※ プレースタイルは「今の設定」で、過去の試合もまとめて集計しています。シーズンによってスタイルが変わったチームは、そのぶん結果がぶれます。チーム数・試合数が少ないうちは、偶然の偏りが大きく出ます。</p>`;
+  el.innerHTML = html;
+}
+function setStyleInPredict(lv){
+  db.config.styleInPredict = lv; save(db);
+  predictCache = {}; preseasonCache = {}; db.preseasonStore = {}; calib = null; db.predCalib = null; _styleFx = null;
+  toast(lv ? 'スタイルの相性を順位予想に反映します' : 'スタイルの相性を順位予想に反映しません');
+  renderStyleAnalysis();
+}
+// 予測で使う相性の補正。{ 'ホーム|アウェイ': 倍率[ホーム得点, アウェイ得点] } をデータが変わるまで覚えておく
+let _styleFx = null, _styleFxSig = null;
+const STYLE_FX_K = [0, 0.35, 0.7];      // 得失点差1点ぶんの相性を、期待得点の倍率にどれだけ効かせるか
+const STYLE_FX_CAP = [0, 0.04, 0.08];   // 倍率の上限（±）
+function styleFactor(h, a){
+  const lv = db.config?.styleInPredict||0;
+  if(!lv || !db.clubStyle) return null;
+  const sig = playedSignature() + '|' + JSON.stringify(db.clubStyle.values) + '|' + lv;
+  if(_styleFxSig!==sig){
+    const matches = styleMatchesFor('all');
+    _styleFx = db.clubStyle.axes.map(ax=>({id:ax.id, inter:styleInteractions(styleAxisStats(ax.id, matches).cells)}));
+    _styleFxSig = sig;
+  }
+  let i = 0;
+  _styleFx.forEach(ax=>{
+    const gh = styleGroup(db.clubStyle.values[h]?.[ax.id]), ga = styleGroup(db.clubStyle.values[a]?.[ax.id]);
+    if(gh!=null && ga!=null) i += ax.inter[gh][ga];
+  });
+  if(!i) return null;
+  const cap = STYLE_FX_CAP[lv];
+  const f = Math.max(-cap, Math.min(cap, STYLE_FX_K[lv]*i/2));
+  return [1+f, 1-f];
+}
+
 // プロフィールに出す要約（何か1つでも設定されていれば）
 function clubParamsSummaryHtml(team){
   const cs = db.clubStyle; if(!cs) return '';
@@ -5417,6 +5608,10 @@ function predictStandings(yr, div, simulations=20000, opts){
     lamH *= formMultiplier(tH);
     lamA *= formMultiplier(tA);
 
+    // プレースタイルの相性（「スタイル分析」で反映をオンにしたときだけ）
+    const sf = styleFactor(h, a);
+    if(sf){ lamH *= sf[0]; lamA *= sf[1]; }
+
     // 直接対決の得点傾向を軽くブレンド（h視点でのaAvgGoals/bAvgGoalsをそのままホーム/アウェイに対応させる）
     const h2h = getH2HStats(h, a);
     if(h2h && h2h.total>=2){
@@ -6004,6 +6199,8 @@ function renderNextRoundForecast(){
       // 順位予想と同じ基準で、直近の調子（勝点ペース＋得失点差）を反映する
       lamH *= formMultiplier(getTeamTendency(yr, div, h));
       lamA *= formMultiplier(getTeamTendency(yr, div, a));
+      const sf = styleFactor(h, a);
+      if(sf){ lamH *= sf[0]; lamA *= sf[1]; }
 
       const h2h = getH2HStats(h, a);
       if(h2h && h2h.total>=2){
@@ -6193,7 +6390,7 @@ function calibSignature(){
     let g=0; getDivData(yr,div).matches.forEach(m=>{ g+=m.home_score*7+m.away_score*3+m.round; });
     parts.push(`${yr}:${div}:${g}`);
   }));
-  return `model2|${getSeasons().join(',')}|${parts.join(',')}`; // model2：攻守力・調子の効きを弱めた版
+  return `model2|style${db.config?.styleInPredict||0}|${getSeasons().join(',')}|${parts.join(',')}`; // model2：攻守力・調子の効きを弱めた版
 }
 function calibrateStrength(){
   const sig = calibSignature();
