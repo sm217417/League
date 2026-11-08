@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&display=swap">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -285,6 +288,163 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 .stbl-pk th:nth-child(5){width:calc(4ch + 12px);}
 .bx-best{position:absolute;top:50%;width:7px;height:7px;margin:-4px 0 0 -4px;border:1.5px solid var(--text);background:var(--surface);transform:rotate(45deg);box-sizing:border-box;z-index:2;}
 .bx-best-out{position:absolute;right:-2px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;color:var(--muted);background:var(--surface);padding:0 1px;}
+
+/* ════════════════════════════════════════════════════════════
+   デザイン：スポーツ中継風
+   濃紺の帯（ヘッダー・表の見出し・ナビ）に、部門カラーと太い細長数字。
+   タブは中継のテロップのような斜めの札。
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --navy:#0c1a33; --navy2:#16294d; --navy3:#22396a;
+  --on-navy:#ffffff; --on-navy-muted:#9fb2d3;
+  --chip:#ffffff;
+  --bg:#e9edf4; --surface:#ffffff; --surface-alt:#f4f6fa;
+  --text:#0d1626; --muted:#5a6880; --border:#d4dbe7; --divider:#e8ecf3;
+  --gold:#e8a317; --gold2:#fdf3d9;
+  --score-bg:#eef2f8;
+  --font-num:"Barlow Condensed","Arial Narrow","Helvetica Neue",sans-serif;
+  --shadow-sm:0 1px 2px rgba(12,26,51,.08);
+  --shadow-md:0 4px 14px rgba(12,26,51,.14);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --navy:#050b18; --navy2:#0d1a33; --navy3:#18294d;
+    --on-navy:#ffffff; --on-navy-muted:#8fa3c6;
+    --chip:#152240;
+    --bg:#08101f; --surface:#111c33; --surface-alt:#16233f;
+    --text:#e9eef8; --muted:#93a4c3; --border:#263759; --divider:#1b2a48;
+    --gold:#ffc04d; --gold2:#3a2f14;
+    --score-bg:#0c1529;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 4px 14px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --navy:#050b18; --navy2:#0d1a33; --navy3:#18294d;
+  --on-navy:#ffffff; --on-navy-muted:#8fa3c6;
+  --chip:#152240;
+  --bg:#08101f; --surface:#111c33; --surface-alt:#16233f;
+  --text:#e9eef8; --muted:#93a4c3; --border:#263759; --divider:#1b2a48;
+  --gold:#ffc04d; --gold2:#3a2f14;
+  --score-bg:#0c1529;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 4px 14px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--text);}
+
+/* ヘッダー：濃紺の帯。上に小さく「WINNER PRO」のロゴ文字 */
+.phdr{background:var(--navy);color:var(--on-navy);border-bottom:none;padding:10px 14px 10px;top:env(safe-area-inset-top,0px);
+  box-shadow:inset 0 -3px 0 var(--gold);}
+.ptitle{font-family:var(--font-num);font-size:24px;font-weight:700;letter-spacing:.02em;line-height:1.05;color:var(--on-navy);}
+.ptitle::before{content:"WINNER PRO";display:block;font-size:10px;font-weight:700;letter-spacing:.28em;color:var(--gold);margin-bottom:1px;}
+.phdr select,.phdr input{background-color:rgba(255,255,255,.08);color:var(--on-navy);border-color:rgba(255,255,255,.18);}
+.phdr select option{color:#0d1626;background:#fff;}
+.phdr select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239fb2d3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");}
+.phdr .rstep{background:rgba(255,255,255,.08);color:var(--on-navy);border-color:rgba(255,255,255,.18);}
+
+/* タブ：斜めの札。選択中は濃紺（部門のタブは部門カラー） */
+.tabs{gap:10px;padding:10px 16px;}
+.tab{position:relative;isolation:isolate;background:none!important;border:none!important;border-radius:0;box-shadow:none!important;
+  padding:7px 13px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.02em;}
+.tab::before{content:"";position:absolute;inset:0;z-index:-1;transform:skewX(-14deg);background:var(--chip);border:1px solid var(--border);border-radius:3px;transition:background .15s,border-color .15s;}
+.tab.active{color:#fff;}
+.tab.active::before{background:var(--tab-bg,var(--navy3));border-color:transparent;}
+.phdr .tab{color:var(--on-navy-muted);}
+.phdr .tab::before{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);}
+.phdr .tab.active{color:#fff;}
+.phdr .tab.active::before{background:var(--tab-bg,var(--g));}
+/* 部門の切り替えは、ヘッダー直下の帯にまとめる */
+.tabs[id^="dtabs-"]{background:var(--navy2);padding:9px 16px 10px;margin:0;}
+.tabs[id^="dtabs-"] .tab{color:var(--on-navy-muted);font-family:var(--font-num);font-size:15px;letter-spacing:.04em;padding:5px 16px;}
+.tabs[id^="dtabs-"] .tab::before{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);}
+.tabs[id^="dtabs-"] .tab.active{color:#fff;}
+.tabs[id^="dtabs-"] .tab.active::before{background:var(--tab-bg);border-color:transparent;box-shadow:0 2px 10px rgba(0,0,0,.35);}
+
+/* カード・見出し */
+.card{border-radius:6px;border:1px solid var(--border);box-shadow:var(--shadow-sm);}
+.card-hdr{background:var(--navy2);color:var(--on-navy);border-bottom:none;font-size:13px;letter-spacing:.02em;}
+.card-hdr[style*="color:var(--red)"]{background:var(--red);color:#fff!important;}
+.slbl{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--text);padding:14px 14px 5px;}
+.slbl::before{content:"";flex:0 0 4px;height:13px;background:var(--gold);transform:skewX(-14deg);}
+.div-accent{height:4px;}
+
+/* ボタン */
+.btn{border-radius:4px;letter-spacing:.02em;}
+.btn-g{box-shadow:none;}
+.rstep{border-radius:4px;}
+input,select,textarea{border-radius:4px;}
+
+/* 進み具合のバー */
+.prog-bar{height:5px;background:var(--divider);border-radius:0;}
+.prog-fill{border-radius:0;}
+.prog-txt{font-family:var(--font-num);font-size:13px;font-weight:600;letter-spacing:.03em;}
+
+/* 順位表：濃紺の見出し行、太い順位、勝点は濃紺の札 */
+.stbl th{background:var(--navy);color:var(--on-navy-muted);border-bottom:none;font-size:10px;letter-spacing:.06em;padding:7px 3px;}
+.stbl td{border-bottom:1px solid var(--divider);padding:7px 3px;}
+.stbl-compact td{padding:6px 2px;}
+.rn{font-family:var(--font-num);font-size:19px;font-weight:700;line-height:1;}
+.pts{display:inline-block;min-width:32px;padding:2px 5px 1px;border-radius:2px;background:var(--navy);color:#fff;
+  font-family:var(--font-num);font-size:17px;font-weight:700;line-height:1.15;letter-spacing:.02em;}
+.stbl-detail th:nth-child(10){width:44px;}
+.stbl td.tl{font-size:12px;}
+/* 昇格・PO・降格圏は左端の太い帯で示す（表彰台の色帯より優先） */
+.stbl tr.row-p td:first-child{box-shadow:inset 4px 0 0 var(--g);}
+.stbl tr.row-po td:first-child{box-shadow:inset 4px 0 0 var(--gold);}
+.stbl tr.row-r td:first-child{box-shadow:inset 4px 0 0 var(--red);}
+.row-p{background:color-mix(in srgb, var(--g) 8%, var(--surface));}
+.row-po{background:color-mix(in srgb, var(--gold) 9%, var(--surface));}
+.row-r{background:color-mix(in srgb, var(--red) 8%, var(--surface));}
+.form-dot{border-radius:2px;width:16px;height:16px;font-family:var(--font-num);font-size:11px;}
+
+/* 試合：スコアは電光掲示板のような四角。結果が入ると濃紺地に白い数字 */
+.rlbl{background:var(--navy2);color:var(--on-navy);border-bottom:none;font-family:var(--font-num);font-size:15px;letter-spacing:.05em;padding:6px 14px;}
+.rlbl span{color:var(--on-navy);}
+.rlbl span + span{color:var(--on-navy-muted);font-size:13px;}
+.mcard{padding:12px 13px 12px 16px;}
+.mcard::before{width:4px;}
+.mteam{font-size:14px;}
+.sinp{width:46px;height:48px;border-radius:3px;background:var(--score-bg);font-family:var(--font-num);font-size:28px;font-weight:700;}
+.mcard.is-played .sinp{background:var(--navy);color:#fff;border-color:var(--navy);}
+.mcard.is-played .sinp.pkinp{background:var(--navy3);border-color:var(--navy3);}
+.sinp.pkinp{width:32px;height:26px;font-size:16px;}
+.ssep{font-family:var(--font-num);font-size:22px;}
+.sbtn{border-radius:3px;}
+.po-sinp{border-radius:3px;font-family:var(--font-num);font-size:20px;}
+.po-match{border-radius:4px;}
+
+/* 数字の表示（統計・対戦成績・箱ひげ図など）を細長の数字に */
+.h2h-val,.stat-pill-val{font-family:var(--font-num);font-size:30px;}
+.stat-pill{border-radius:6px;}
+.bx-val,.bx-tick,.bx-rk{font-family:var(--font-num);}
+.bx-val{font-size:14px;}
+.bx-tick{font-size:11px;}
+.heatmap-tbl th{background:var(--navy);color:var(--on-navy-muted);}
+.heatmap-team,.heatmap-corner{background:var(--surface-alt)!important;color:var(--text);}
+.heatmap-tbl th.hm-pts{background:var(--navy);color:var(--on-navy-muted);}
+
+/* ボトムナビ：濃紺の帯。選択中は金の線と白い文字 */
+.bnav{background:var(--navy);border-top:none;box-shadow:0 -4px 16px rgba(12,26,51,.25);}
+.bnav-btn{color:var(--on-navy-muted);font-size:10px;font-weight:700;letter-spacing:.04em;gap:3px;}
+.bnav-btn.active{color:#fff;}
+.bnav-btn.active::before{width:28px;height:3px;background:var(--gold);border-radius:0;}
+.bnav-icon{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+#toast{background:var(--navy);color:#fff;border-radius:4px;box-shadow:inset 3px 0 0 var(--gold),var(--shadow-md);}
+.joint-banner{border-radius:4px;box-shadow:inset 3px 0 0 var(--gold);}
+.loading{font-size:13px;}
+@media (prefers-reduced-motion: reduce){.page.active{animation:none;}}
+
+/* 勝点の札・結果入りスコアの色（ダークでは白地に濃紺の数字で目立たせる） */
+:root{--pts-bg:var(--navy);--pts-fg:#fff;--score-played-bg:var(--navy);--score-played-fg:#fff;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pts-bg:#e9eef8;--pts-fg:#071022;--score-played-bg:#21396a;--score-played-fg:#fff;}}
+:root[data-theme="dark"]{--pts-bg:#e9eef8;--pts-fg:#071022;--score-played-bg:#21396a;--score-played-fg:#fff;}
+.pts{background:var(--pts-bg);color:var(--pts-fg);}
+.mcard.is-played .sinp{background:var(--score-played-bg);color:var(--score-played-fg);border-color:var(--score-played-bg);}
+.bx-row{grid-template-columns:calc(16px + 4.6em) 1fr 40px !important;}
+.bx-val{font-size:13px;white-space:nowrap;}
+.slbl[style*="space-between"]::before{display:none;}
 </style>
 </head>
 <body>
@@ -293,14 +453,14 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <div class="page active" id="pg-home">
   <div class="phdr">
     <div style="display:flex;align-items:center;justify-content:space-between;">
-      <div class="ptitle">📊 順位表</div>
+      <div class="ptitle">順位表</div>
       <select id="home-yr" style="width:100px;font-size:13px;padding:5px 8px;" onchange="loadStandings()"></select>
     </div>
   </div>
   <div class="tabs" id="dtabs-home"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="stview-tab-detail" onclick="switchStandingsView('detail')">📋 詳細</div>
-    <div class="tab" id="stview-tab-form" onclick="switchStandingsView('form')">📈 直近5試合</div>
+    <div class="tab active" id="stview-tab-detail" onclick="switchStandingsView('detail')">詳細</div>
+    <div class="tab" id="stview-tab-form" onclick="switchStandingsView('form')">直近5試合</div>
   </div>
   <div class="home-round">
     <button class="rstep" onclick="stepHomeRound(-1)" aria-label="前の節の時点へ">◀</button>
@@ -313,7 +473,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <!-- 試合 -->
 <div class="page" id="pg-matches">
   <div class="phdr">
-    <div class="ptitle">🏆 リーグ</div>
+    <div class="ptitle">試合</div>
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:7px;">
       <div style="display:flex;gap:6px;align-items:center;">
         <button class="rstep" onclick="stepRound(-1)" aria-label="前の節">◀</button>
@@ -330,9 +490,9 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
   <div class="tabs" id="dtabs-matches"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="lg-subtab-matches" onclick="switchLeagueSubtab('matches')">⚽ 試合</div>
-    <div class="tab" id="lg-subtab-forecast" onclick="switchLeagueSubtab('forecast')">🔮 次節予想</div>
-    <div class="tab" id="lg-subtab-po" onclick="switchLeagueSubtab('po')">🏅 プレーオフ</div>
+    <div class="tab active" id="lg-subtab-matches" onclick="switchLeagueSubtab('matches')">試合</div>
+    <div class="tab" id="lg-subtab-forecast" onclick="switchLeagueSubtab('forecast')">次節予想</div>
+    <div class="tab" id="lg-subtab-po" onclick="switchLeagueSubtab('po')">プレーオフ</div>
   </div>
   <div id="matches-area"><div class="loading">データなし</div></div>
   <div id="forecast-area" style="display:none;"></div>
@@ -341,10 +501,10 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 
 <!-- 設定 -->
 <div class="page" id="pg-setup">
-  <div class="phdr"><div class="ptitle">⚙️ 設定</div></div>
+  <div class="phdr"><div class="ptitle">設定</div></div>
 
   <div class="card">
-    <div class="card-hdr">👥 チーム編集（追加・削除）</div>
+    <div class="card-hdr">チーム編集（追加・削除）</div>
     <div class="card-body">
       <div class="field" style="margin-bottom:10px;">
         <label>編集する部門</label>
@@ -396,8 +556,8 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
         <div class="field">
           <label>日程の作り方</label>
           <div class="tabs" style="padding:0;">
-            <div class="tab active" id="sched-mode-auto" onclick="setScheduleMode('auto')">🎲 自動（総当たり）</div>
-            <div class="tab" id="sched-mode-manual" onclick="setScheduleMode('manual')">✍️ 手動（実在リーグ再現）</div>
+            <div class="tab active" id="sched-mode-auto" onclick="setScheduleMode('auto')">自動（総当たり）</div>
+            <div class="tab" id="sched-mode-manual" onclick="setScheduleMode('manual')">手動（実在リーグ再現）</div>
           </div>
         </div>
         <p style="font-size:11px;color:var(--muted);margin:6px 0 12px;line-height:1.7;" id="sched-mode-desc">
@@ -413,17 +573,17 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
 
   <div class="card">
-    <div class="card-hdr">🏷️ リーグ名</div>
+    <div class="card-hdr">リーグ名</div>
     <div class="card-body" id="dname-area"></div>
   </div>
 
   <div class="card">
-    <div class="card-hdr">🏷️ カップ名</div>
+    <div class="card-hdr">カップ名</div>
     <div class="card-body" id="cupname-area"></div>
   </div>
 
   <div class="card">
-    <div class="card-hdr">📂 過去データの入力</div>
+    <div class="card-hdr">過去データの入力</div>
     <div class="card-body">
 
       <!-- 年度・部門選択 -->
@@ -465,7 +625,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
 
   <div class="card">
-    <div class="card-hdr">💾 バックアップ・保存状態</div>
+    <div class="card-hdr">バックアップ・保存状態</div>
     <div class="card-body">
       <div id="storage-info" style="font-size:12px;margin-bottom:10px;padding:8px 10px;background:var(--surface-alt);border-radius:8px;"></div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
@@ -482,7 +642,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
 
   <div class="card">
-    <div class="card-hdr">🗂️ シーズンの表示名・並び順</div>
+    <div class="card-hdr">シーズンの表示名・並び順</div>
     <div class="card-body">
       <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
         シーズンの表示名と並び順を変更できます。並び順は<strong>数値が大きいほど新しい</strong>シーズンとして扱われ、
@@ -493,7 +653,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
 
   <div class="card">
-    <div class="card-hdr" style="color:var(--red);">🗑️ シーズン削除</div>
+    <div class="card-hdr" style="color:var(--red);">シーズン削除</div>
     <div class="card-body">
       <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
         誤って作成したシーズンを削除します。この操作は取り消せません。
@@ -510,23 +670,23 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <!-- 記録 -->
 <div class="page" id="pg-history">
   <div class="phdr">
-    <div class="ptitle">📖 記録</div>
+    <div class="ptitle">記録</div>
     <div class="tabs" style="padding:7px 0 0;margin:0;">
-      <div class="tab active" id="hcat-tab-records" onclick="switchHistCategory('records')">📚 記録</div>
-      <div class="tab" id="hcat-tab-analysis" onclick="switchHistCategory('analysis')">🔍 分析</div>
+      <div class="tab active" id="hcat-tab-records" onclick="switchHistCategory('records')">記録</div>
+      <div class="tab" id="hcat-tab-analysis" onclick="switchHistCategory('analysis')">分析</div>
     </div>
     <div class="tabs" id="hcat-sub-records" style="padding:2px 0 7px;margin:0;">
-      <div class="tab active" onclick="switchHistTab('alltime',this)">🏆 歴代</div>
-      <div class="tab" onclick="switchHistTab('titles',this)">🎖️ タイトル</div>
-      <div class="tab" onclick="switchHistTab('streaks',this)">🔥 連勝記録</div>
-      <div class="tab" onclick="switchHistTab('upsets',this)">💥 金星</div>
-      <div class="tab" onclick="switchHistTab('trend',this)">📊 年度別推移</div>
-      <div class="tab" onclick="switchHistTab('inseason',this)">🔄 順位変動</div>
+      <div class="tab active" onclick="switchHistTab('alltime',this)">歴代</div>
+      <div class="tab" onclick="switchHistTab('titles',this)">タイトル</div>
+      <div class="tab" onclick="switchHistTab('streaks',this)">連勝記録</div>
+      <div class="tab" onclick="switchHistTab('upsets',this)">金星</div>
+      <div class="tab" onclick="switchHistTab('trend',this)">年度別推移</div>
+      <div class="tab" onclick="switchHistTab('inseason',this)">順位変動</div>
     </div>
     <div class="tabs" id="hcat-sub-analysis" style="padding:2px 0 7px;margin:0;display:none;">
-      <div class="tab active" onclick="switchHistTab('profile',this)">👤 プロフィール</div>
+      <div class="tab active" onclick="switchHistTab('profile',this)">プロフィール</div>
       <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
-      <div class="tab" onclick="switchHistTab('snapshot',this)">📸 開幕時R</div>
+      <div class="tab" onclick="switchHistTab('snapshot',this)">開幕時R</div>
     </div>
   </div>
   <div id="history-area"></div>
@@ -535,7 +695,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <!-- カップ戦 -->
 <div class="page" id="pg-cup">
   <div class="phdr">
-    <div class="ptitle">🏅 カップ戦</div>
+    <div class="ptitle">カップ戦</div>
     <div style="display:flex;gap:6px;margin-top:7px;">
       <select id="cup-yr" style="font-size:13px;padding:6px 8px;" onchange="renderCup()"></select>
     </div>
@@ -547,7 +707,7 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 <!-- ELO予測 -->
 <div class="page" id="pg-predict">
   <div class="phdr">
-    <div class="ptitle">🔮 ELO予測</div>
+    <div class="ptitle">予測</div>
     <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
       <select id="pr-yr" style="font-size:13px;padding:6px 8px;" onchange="renderPredictPage()"></select>
       <button class="btn btn-g btn-sm" onclick="runPrediction()">🔄 予測を更新（2万回試行）</button>
@@ -555,9 +715,9 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
   </div>
   <div class="tabs" id="dtabs-predict"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">🔥 ヒートマップ</div>
-    <div class="tab" id="pr-subtab-elo" onclick="switchPredictSubtab('elo')">📈 ELO</div>
-    <div class="tab" id="pr-subtab-ad" onclick="switchPredictSubtab('ad')">⚔️ 攻守力</div>
+    <div class="tab active" id="pr-subtab-heatmap" onclick="switchPredictSubtab('heatmap')">順位予想</div>
+    <div class="tab" id="pr-subtab-elo" onclick="switchPredictSubtab('elo')">ELO</div>
+    <div class="tab" id="pr-subtab-ad" onclick="switchPredictSubtab('ad')">攻守力</div>
   </div>
   <div id="predict-area" style="display:none;"></div>
   <div id="ad-area" style="display:none;"></div>
@@ -566,12 +726,12 @@ body{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px));}
 
 <!-- ボトムナビ -->
 <nav class="bnav">
-  <button class="bnav-btn active" onclick="go('home',this)"><span class="bnav-icon">📊</span>順位</button>
-  <button class="bnav-btn" onclick="go('matches',this)"><span class="bnav-icon">🏆</span>リーグ</button>
-  <button class="bnav-btn" onclick="go('cup',this)"><span class="bnav-icon">🏅</span>カップ</button>
-  <button class="bnav-btn" onclick="go('setup',this)"><span class="bnav-icon">⚙️</span>設定</button>
-  <button class="bnav-btn" onclick="go('history',this)"><span class="bnav-icon">📖</span>記録</button>
-  <button class="bnav-btn" onclick="go('predict',this)"><span class="bnav-icon">🔮</span>予測</button>
+  <button class="bnav-btn active" onclick="go('home',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h11M4 18h7"/></svg>順位</button>
+  <button class="bnav-btn" onclick="go('matches',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5l3.8 2.8-1.5 4.5H9.7l-1.5-4.5z"/></svg>試合</button>
+  <button class="bnav-btn" onclick="go('predict',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18l5-6 4 3 7-8"/><path d="M15 7h5v5"/></svg>予測</button>
+  <button class="bnav-btn" onclick="go('history',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5A1.5 1.5 0 016.5 4H18v14H6.5A1.5 1.5 0 005 19.5z"/><path d="M5 19.5A1.5 1.5 0 006.5 21H18"/></svg>記録</button>
+  <button class="bnav-btn" onclick="go('cup',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 01-8 0z"/><path d="M8 6H5.5a2.5 2.5 0 002.7 3.5M16 6h2.5a2.5 2.5 0 01-2.7 3.5M12 13v4M8.5 20h7"/></svg>カップ</button>
+  <button class="bnav-btn" onclick="go('setup',this)"><svg class="bnav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>設定</button>
 </nav>
 
 <script>
@@ -892,7 +1052,7 @@ function go(name, btn){
   window.scrollTo(0,0);
   if(name==='home') loadStandings();
   if(name==='history') restoreHistoryView();
-  if(name==='matches'){ loadMatches(); renderPlayoff(); }
+  if(name==='matches'){ loadMatches(); renderPlayoff(); if(leagueSubtab==='forecast') renderNextRoundForecast(); }
   if(name==='predict') renderPredictPage();
   if(name==='cup') renderCup();
 }
@@ -957,16 +1117,17 @@ function buildDivTabs(id, active, cb){
   divTabHandlers[id] = cb;
   const dn = db.config.div_names;
   document.getElementById(id).innerHTML = [1,2,3].map(d=>`
-    <div class="tab ${d===active?'active':''}" data-d="${d}"
-      style="${d===active?`background:${DIV_COLOR[d]};border-color:${DIV_COLOR[d]};`:''}"
+    <div class="tab ${d===active?'active':''}" data-d="${d}" style="--tab-bg:${DIV_COLOR[d]};"
       onclick="selectDivTab('${id}', this, ${d})">
       ${dn[d]||d+'部'}
     </div>`).join('');
 }
 function selectDivTab(id, el, d){
-  el.parentNode.querySelectorAll('.tab').forEach(t=>{ t.classList.remove('active'); t.style.background=''; t.style.borderColor=''; });
-  el.classList.add('active');
-  el.style.background = DIV_COLOR[d]; el.style.borderColor = DIV_COLOR[d];
+  // 部門の選択は全ページ共通：ほかのページのタブの見た目と選択中の部門もそろえる（描き直しはそのページを開いたとき）
+  Object.keys(divTabHandlers).forEach(other=>{
+    document.querySelectorAll(`#${other} .tab`).forEach(t=>t.classList.toggle('active', Number(t.dataset.d)===d));
+  });
+  curDiv.home = curDiv.matches = curDiv.po = curDiv.predict = d;
   divTabHandlers[id](d);
 }
 
@@ -1520,7 +1681,7 @@ function buildManualAddFormHtml(div){
   const teamOptions = teams.map(t=>`<option value="${t}">${t}</option>`).join('');
   return `
     <div class="card">
-      <div class="card-hdr">✍️ 試合を追加</div>
+      <div class="card-hdr">試合を追加</div>
       <div class="card-body">
         <div class="row" style="margin-bottom:8px;">
           <div class="field" style="margin:0;flex:0 0 70px;"><label>節</label><input type="number" id="ma-round" min="1" placeholder="1"></div>
@@ -2503,7 +2664,7 @@ function renderHistAlltime(){
     });
     const ranked=Object.entries(wins).sort((a,b)=>b[1]-a[1]);
     if(!ranked.length) return;
-    html+=`<div class="slbl" style="color:${color};">🏆 優勝回数（${getDivName(div)}）</div><div class="card">`;
+    html+=`<div class="slbl" style="color:${color};">優勝回数（${getDivName(div)}）</div><div class="card">`;
     ranked.slice(0,8).forEach(([team,cnt],i)=>{
       const rc=i===0?'var(--gold)':i===1?'#90a4ae':i===2?'#ff8a65':'var(--muted)';
       html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);">
@@ -2567,16 +2728,16 @@ function renderTitlesRanking(){
 
   let html = `<div class="tabs" style="padding:0 12px 8px;">
     <div class="tab ${titlesFilterDiv===0?'active':''}" onclick="switchTitlesDiv(0)">全体</div>
-    <div class="tab ${titlesFilterDiv===1?'active':''}" onclick="switchTitlesDiv(1)" style="${titlesFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${titlesFilterDiv===2?'active':''}" onclick="switchTitlesDiv(2)" style="${titlesFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${titlesFilterDiv===3?'active':''}" onclick="switchTitlesDiv(3)" style="${titlesFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+    <div class="tab ${titlesFilterDiv===1?'active':''}" onclick="switchTitlesDiv(1)" style="${titlesFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${titlesFilterDiv===2?'active':''}" onclick="switchTitlesDiv(2)" style="${titlesFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${titlesFilterDiv===3?'active':''}" onclick="switchTitlesDiv(3)" style="${titlesFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
   </div>`;
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
     ${titlesFilterDiv===0
       ? 'リーグ優勝・カップ優勝・昇格プレーオフ優勝を合算した「通算タイトル数」ランキングです。'
       : `${getDivName(titlesFilterDiv)}でのリーグ優勝・昇格プレーオフ優勝を合算したランキングです（カップ戦は部門を横断するため「全体」でのみ集計されます）。`}
   </p>`;
-  html += `<div class="slbl">🎖️ 通算タイトルランキング</div><div class="card">`;
+  html += `<div class="slbl">通算タイトルランキング</div><div class="card">`;
   if(!ranked.length){
     html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">まだタイトル獲得記録がありません</div>`;
   } else {
@@ -2641,12 +2802,12 @@ function renderStreaksRanking(){
 
   let html = `<div class="tabs" style="padding:0 12px 8px;">
     <div class="tab ${streaksFilterDiv===0?'active':''}" onclick="switchStreaksDiv(0)">全体</div>
-    <div class="tab ${streaksFilterDiv===1?'active':''}" onclick="switchStreaksDiv(1)" style="${streaksFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${streaksFilterDiv===2?'active':''}" onclick="switchStreaksDiv(2)" style="${streaksFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${streaksFilterDiv===3?'active':''}" onclick="switchStreaksDiv(3)" style="${streaksFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+    <div class="tab ${streaksFilterDiv===1?'active':''}" onclick="switchStreaksDiv(1)" style="${streaksFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${streaksFilterDiv===2?'active':''}" onclick="switchStreaksDiv(2)" style="${streaksFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${streaksFilterDiv===3?'active':''}" onclick="switchStreaksDiv(3)" style="${streaksFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
   </div>`;
 
-  html += `<div class="slbl">🔥 最長連勝記録</div><div class="card">`;
+  html += `<div class="slbl">最長連勝記録</div><div class="card">`;
   if(!bestWinStreaks.length){
     html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">データなし</div>`;
   } else {
@@ -2661,7 +2822,7 @@ function renderStreaksRanking(){
   }
   html += `</div>`;
 
-  html += `<div class="slbl">❄️ 最長連敗記録</div><div class="card">`;
+  html += `<div class="slbl">最長連敗記録</div><div class="card">`;
   if(!bestLoseStreaks.length){
     html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">データなし</div>`;
   } else {
@@ -2763,14 +2924,14 @@ function renderUpsetsRanking(){
 
     let html = `<div class="tabs" style="padding:0 12px 8px;">
       <div class="tab ${upsetsFilterDiv===0?'active':''}" onclick="switchUpsetsDiv(0)">全体</div>
-      <div class="tab ${upsetsFilterDiv===1?'active':''}" onclick="switchUpsetsDiv(1)" style="${upsetsFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
-      <div class="tab ${upsetsFilterDiv===2?'active':''}" onclick="switchUpsetsDiv(2)" style="${upsetsFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
-      <div class="tab ${upsetsFilterDiv===3?'active':''}" onclick="switchUpsetsDiv(3)" style="${upsetsFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+      <div class="tab ${upsetsFilterDiv===1?'active':''}" onclick="switchUpsetsDiv(1)" style="${upsetsFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
+      <div class="tab ${upsetsFilterDiv===2?'active':''}" onclick="switchUpsetsDiv(2)" style="${upsetsFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
+      <div class="tab ${upsetsFilterDiv===3?'active':''}" onclick="switchUpsetsDiv(3)" style="${upsetsFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
     </div>`;
     html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
       試合前のELOレーティングから見た「勝者側の勝率」が低いほど、番狂わせ度が高い試合です。${upsetsFilterDiv!==0?'（カップ戦は部門を横断するため「全体」でのみ表示されます）':''}
     </p>`;
-    html += `<div class="slbl">💥 金星（番狂わせ）ランキング TOP15</div><div class="card">`;
+    html += `<div class="slbl">金星（番狂わせ）ランキング TOP15</div><div class="card">`;
     if(!results.length){
       html += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted);">データなし</div>`;
     } else {
@@ -2831,7 +2992,7 @@ function showRatingSnapshot(){
     ${getSeasonLabel(yr)}の開幕時点で保存されたレーティングです（保存日: ${savedDate}）。<br>
     リーグ標準ホームアドバンテージ: ${snap.leagueHomeAdv ?? '—'}pt
   </p>`;
-  html += `<div class="slbl">📸 ${getSeasonLabel(yr)} 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
+  html += `<div class="slbl">${getSeasonLabel(yr)} 開幕時レーティング</div><div class="card"><div class="tbl-scroll">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>開幕時ELO</th><th>HA</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -2883,7 +3044,7 @@ function teamStreaksHtml(team){
   const span = b => b.start===b.end ? at(b.start)
     : b.start.yr===b.end.yr ? `${getSeasonLabel(b.start.yr)} 第${b.start.cround}〜${b.end.cround}節`
     : `${at(b.start)}〜${at(b.end)}`;
-  let html = `<div class="slbl">🔁 連続記録（リーグ戦）</div><div class="card">`;
+  let html = `<div class="slbl">連続記録（リーグ戦）</div><div class="card">`;
   STREAK_KINDS.forEach(k=>{
     const s = st[k.key];
     html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
@@ -2982,7 +3143,7 @@ function showTeamProfile(){
     <div class="stat-pill"><div class="stat-pill-val">${p}</div><div class="stat-pill-lbl">通算試合数</div></div>
   </div>`;
 
-  html += `<div class="slbl">📊 通算成績</div><div class="card"><div class="card-body">
+  html += `<div class="slbl">通算成績</div><div class="card"><div class="card-body">
     <div style="display:flex;justify-content:space-around;text-align:center;">
       <div><div style="font-size:20px;font-weight:700;color:var(--g);">${w}</div><div style="font-size:10px;color:var(--muted);">勝</div></div>
       <div><div style="font-size:20px;font-weight:700;color:var(--gold);">${d}</div><div style="font-size:10px;color:var(--muted);">分</div></div>
@@ -2994,7 +3155,7 @@ function showTeamProfile(){
   // 部門別の内訳（その部門で1試合でもプレーした場合のみ行を出す）
   const playedDivs = [1,2,3].filter(dv=>stats[dv].p>0);
   if(playedDivs.length){
-    html += `<div class="slbl">📋 部門別の通算成績</div><div class="card"><div class="tbl-scroll">`;
+    html += `<div class="slbl">部門別の通算成績</div><div class="card"><div class="tbl-scroll">`;
     html += `<table class="stbl"><thead><tr><th class="tl">部門</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝率</th></tr></thead><tbody>`;
     playedDivs.forEach(dv=>{
       const s = stats[dv];
@@ -3014,7 +3175,7 @@ function showTeamProfile(){
     html += `</tbody></table></div></div>`;
   }
 
-  html += `<div class="slbl">🎖️ タイトル内訳</div><div class="card"><div class="card-body">
+  html += `<div class="slbl">タイトル内訳</div><div class="card"><div class="card-body">
     <div style="display:flex;justify-content:space-around;text-align:center;">
       <div><div style="font-size:18px;font-weight:700;">${leagueTitles}</div><div style="font-size:10px;color:var(--muted);">🏆リーグ</div></div>
       <div><div style="font-size:18px;font-weight:700;">${cupTitles}</div><div style="font-size:10px;color:var(--muted);">🏅カップ</div></div>
@@ -3041,7 +3202,7 @@ function showTeamProfile(){
         </span>
       </div>`;
     };
-    html += `<div class="slbl">📈 1試合記録</div><div class="card">`;
+    html += `<div class="slbl">1試合記録</div><div class="card">`;
     html += recRow(recMaxGF, '最大得点', 'var(--g)', `${recMaxGF.my}点`);
     html += recRow(recMaxGA, '最大失点', 'var(--red)', `${recMaxGA.opp}点`);
     if(recMaxWin)  html += recRow(recMaxWin,  '最大点差勝利', 'var(--g)',  `+${recMaxWin.my-recMaxWin.opp}`);
@@ -3052,7 +3213,7 @@ function showTeamProfile(){
   html += teamStreaksHtml(team);
 
   if(log.length){
-    html += `<div class="slbl">🔀 昇降格履歴</div><div class="card">`;
+    html += `<div class="slbl">昇降格履歴</div><div class="card">`;
     log.forEach(e=>{
       const isUp = e.toDiv < e.fromDiv;
       const arrow = isUp ? '🔼' : '🔽';
@@ -4004,11 +4165,11 @@ function renderCup(){
     // 新規作成フォーム（自動抽選 / 手動入力を選択）
     el.innerHTML = `
       <div class="card">
-        <div class="card-hdr">🏅 ${cupName}を新規作成</div>
+        <div class="card-hdr">${cupName}を新規作成</div>
         <div class="card-body">
           <div class="tabs" style="padding:0 0 8px;">
-            <div class="tab active" id="cup-create-tab-auto" onclick="switchCupCreateMode('auto',${slot})">🎲 自動抽選</div>
-            <div class="tab" id="cup-create-tab-manual" onclick="switchCupCreateMode('manual',${slot})">✍️ 手動入力</div>
+            <div class="tab active" id="cup-create-tab-auto" onclick="switchCupCreateMode('auto',${slot})">自動抽選</div>
+            <div class="tab" id="cup-create-tab-manual" onclick="switchCupCreateMode('manual',${slot})">手動入力</div>
           </div>
 
           <div id="cup-create-auto-${slot}">
@@ -5124,9 +5285,9 @@ function renderAttackDefenseRanking(){
 
   let html = `<div class="tabs" style="padding:0 12px 8px;">
     <div class="tab ${adFilterDiv===0?'active':''}" onclick="switchAdDiv(0)">全体</div>
-    <div class="tab ${adFilterDiv===1?'active':''}" onclick="switchAdDiv(1)" style="${adFilterDiv===1?'background:var(--d1);border-color:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${adFilterDiv===2?'active':''}" onclick="switchAdDiv(2)" style="${adFilterDiv===2?'background:var(--d2);border-color:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${adFilterDiv===3?'active':''}" onclick="switchAdDiv(3)" style="${adFilterDiv===3?'background:var(--d3);border-color:var(--d3);':''}">${getDivName(3)}</div>
+    <div class="tab ${adFilterDiv===1?'active':''}" onclick="switchAdDiv(1)" style="${adFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
+    <div class="tab ${adFilterDiv===2?'active':''}" onclick="switchAdDiv(2)" style="${adFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
+    <div class="tab ${adFilterDiv===3?'active':''}" onclick="switchAdDiv(3)" style="${adFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
   </div>`;
 
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
@@ -5142,7 +5303,7 @@ function renderAttackDefenseRanking(){
     el.innerHTML = html; return;
   }
 
-  html += `<div class="slbl">⚔️ 攻撃力ランキング</div><div class="card">`;
+  html += `<div class="slbl">攻撃力ランキング</div><div class="card">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>攻撃力</th><th>所属</th></tr></thead><tbody>`;
   byAttack.slice(0,15).forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -5153,7 +5314,7 @@ function renderAttackDefenseRanking(){
   });
   html += `</tbody></table></div>`;
 
-  html += `<div class="slbl">🛡️ 守備力ランキング（堅い順）</div><div class="card">`;
+  html += `<div class="slbl">守備力ランキング（堅い順）</div><div class="card">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>守備力</th><th>所属</th></tr></thead><tbody>`;
   byDefense.slice(0,15).forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
@@ -5191,17 +5352,21 @@ function raceDefs(yr, div, n){
   const rN = hasLower ? (d.relegateN!==undefined ? d.relegateN : AUTO_RELEGATE_N) : 0;
   const defs = [];
   if(div===1 || d.joint) defs.push({key:'title', label:'優勝争い', from:1, to:1, line:1, lineLabel:'優勝ライン'});
+  // 1部はプレーオフがないので、代わりに3位以内（上位3チーム）争いを出す
+  if(div===1 && n>3) defs.push({key:'top3', label:'3位以内争い', from:1, to:3, line:3, lineLabel:'3位ライン'});
   if(pN>0) defs.push({key:'promote', label:'昇格争い', from:1, to:pN, line:pN, lineLabel:'自動昇格ライン'});
   // PO争いは「PO圏以上（自動昇格を含む、例：6位以上）」に入れるかで見る
   if(poN>0) defs.push({key:'playoff', label:'PO争い', from:1, to:pN+poN, line:pN+poN, lineLabel:'PO圏ライン'});
   if(rN>0 && rN<n) defs.push({key:'relegate', label:'降格争い', from:n-rN+1, to:n, line:n-rN, lineLabel:'残留ライン'});
+  // 最下部（降格がない部門）は、最下位争いを出す
+  if(div===3 && !d.joint && n>2) defs.push({key:'last', label:'最下位争い', from:n, to:n, line:n-1, lineLabel:'最下位回避ライン'});
   return defs;
 }
 // 争いに絡むチームを選ぶ。
-//  ・その順位帯に入る確率が2%以上98%以下のチーム（＝まだ決まっていないチーム）を「争っている」とみなす
-//  ・ほぼ確定（98%超）のチームは、争いの相手として見比べたいので、帯の境目に最も近い2チームまで加える
+//  ・その順位帯に入る確率が1%以上99%以下のチーム（＝まだ決まっていないチーム）を「争っている」とみなす
+//  ・ほぼ確定（99%超）のチームは、争いの相手として見比べたいので、帯の境目に最も近い2チームまで加える
 //  ・争っているチームが帯の枠数より少ないとき（終盤など）は、帯に入る確率が高い順に枠数＋1まで補う
-const RACE_MIN_P = 2, RACE_MAX_P = 98;
+const RACE_MIN_P = 1, RACE_MAX_P = 99;
 function teamsInRace(pred, def){
   const pIn = r => (r.rankDist||[]).slice(def.from-1, def.to).reduce((a,b)=>a+b, 0);
   const rows = pred.map(r=>({r, p:pIn(r)}));
@@ -5526,7 +5691,7 @@ function renderNextRoundForecast(){
     const rankOf = {};
     standings.forEach(r=>{ rankOf[r.team]=r.rank; });
 
-    let html = `<div class="slbl">🔮 第${nextKey.cr}節 勝敗予想</div>`;
+    let html = `<div class="slbl">第${nextKey.cr}節 勝敗予想</div>`;
 
     nextMatches.forEach(m=>{
       const h=m.home, a=m.away;
