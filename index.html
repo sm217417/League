@@ -6,9 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&display=swap">
+<!-- WINNER PRO v2.1.2（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -445,6 +443,113 @@ input,select,textarea{border-radius:4px;}
 .bx-row{grid-template-columns:calc(16px + 4.6em) 1fr 40px !important;}
 .bx-val{font-size:13px;white-space:nowrap;}
 .slbl[style*="space-between"]::before{display:none;}
+
+/* ══ v2.1.1：強調色を紺・黄に／数字は元の書体／記録済みの試合は反転しない ══ */
+:root{
+  --font-num:"Hiragino Sans","Meiryo",sans-serif;
+  --primary:var(--navy3); --on-primary:#fff;       /* ボタンなど */
+  --accent:var(--gold);   --accent-ink:#8a5a00;    /* 保存済み・勝ったチームなどの強調 */
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--primary:var(--gold);--on-primary:#0c1a33;--accent-ink:var(--gold);}}
+:root[data-theme="dark"]{--primary:var(--gold);--on-primary:#0c1a33;--accent-ink:var(--gold);}
+.btn-g{background:var(--primary);color:var(--on-primary);}
+.btn-g:active{filter:brightness(.9);background:var(--primary);}
+.phdr .btn-g{background:var(--gold);color:#0c1a33;}
+.phdr .tab.active::before{background:var(--tab-bg,var(--gold));}
+.phdr .tab.active{color:#0c1a33;}
+.phdr .tab.active[style*="--tab-bg"]{color:#fff;}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px color-mix(in srgb, var(--gold) 25%, transparent);}
+.sinp:focus,.po-sinp:focus{border-color:var(--gold);box-shadow:0 0 0 3px color-mix(in srgb, var(--gold) 25%, transparent);}
+.sbtn.saved{border-color:var(--gold);color:var(--accent-ink);background:var(--gold2);}
+.mcard.is-played::before{background:var(--gold);}
+.mteam.win{color:var(--accent-ink);}
+.mcard.is-played .sinp{background:var(--score-bg);color:var(--text);border-color:var(--border);}
+.mcard.is-played .sinp.pkinp{background:var(--score-bg);border-color:var(--border);}
+.po-team.winner{background:var(--gold2);color:var(--accent-ink);}
+.stat-pill-val{color:var(--text);}
+.joint-chk input[type="checkbox"]{accent-color:var(--navy3);}
+/* 数字の大きさを元の書体に合わせて調整 */
+.ptitle{font-size:21px;letter-spacing:0;}
+.rn{font-size:16px;}
+.pts{font-size:14px;min-width:30px;padding:2px 4px;}
+.sinp{font-size:21px;}
+.sinp.pkinp{font-size:13px;}
+.ssep{font-size:17px;}
+.rlbl{font-size:12px;letter-spacing:.02em;}
+.rlbl span + span{font-size:11px;}
+.tabs[id^="dtabs-"] .tab{font-size:13px;letter-spacing:0;}
+.prog-txt{font-size:11px;}
+.h2h-val,.stat-pill-val{font-size:24px;}
+.bx-val{font-size:11px;}
+.bx-tick{font-size:9px;}
+.form-dot{font-size:9px;}
+/* バージョン情報 */
+.ver-now{font-size:13px;margin-bottom:8px;}
+.ver-now b{font-size:15px;}
+.ver-entry{border-top:1px solid var(--divider);padding-top:8px;margin-top:8px;}
+.ver-head{font-size:12px;font-weight:700;display:flex;gap:8px;align-items:baseline;}
+.ver-head span{font-size:11px;font-weight:400;color:var(--muted);}
+.ver-entry ul{margin:4px 0 0 18px;font-size:11px;line-height:1.7;color:var(--muted);}
+/* クラブ特徴 */
+.club-pick{display:flex;gap:6px;padding:10px 12px 0;}
+.club-pick select{flex:1;min-width:0;font-size:13px;padding:6px 8px;}
+.club-radar-wrap{display:flex;flex-direction:column;align-items:center;}
+.club-radar{width:100%;max-width:280px;height:auto;display:block;overflow:visible;}
+.club-legend{display:flex;gap:14px;font-size:11px;font-weight:700;margin-top:4px;}
+.club-legend span::before{content:"";display:inline-block;width:10px;height:3px;background:var(--c);margin-right:5px;vertical-align:middle;}
+.club-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);width:100%;}
+.club-row:last-child{border-bottom:none;}
+.club-name{flex:0 0 6.5em;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.club-dots{flex:1;display:flex;gap:3px;min-width:0;}
+.club-dot{flex:1;height:16px;min-width:0;border:1px solid var(--border);background:var(--surface-alt);border-radius:2px;cursor:pointer;padding:0;}
+.club-dot.on{background:var(--c);border-color:var(--c);}
+.club-val{flex:0 0 22px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;}
+.club-def{display:flex;gap:6px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--divider);}
+.club-def:last-child{border-bottom:none;}
+.club-def input{flex:1;min-width:0;padding:6px 8px;font-size:13px;}
+.club-def .sbtn:disabled{opacity:.35;}
+.club-del.armed{color:#fff;background:var(--red);border-color:var(--red);}
+.club-note{font-size:12px;line-height:1.7;margin-top:8px;align-self:stretch;white-space:pre-wrap;}
+.note-sm{font-size:11px;color:var(--muted);padding:2px 14px 16px;line-height:1.7;}
+
+/* ══ v2.1.2：クラブ特徴（プレースタイル） ══ */
+.st-card{padding:4px 0;}
+.st-axis{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);}
+.st-axis:last-child{border-bottom:none;}
+.st-pole{font-size:11px;font-weight:700;color:var(--muted);line-height:1.3;}
+.st-pole.l{text-align:right;} .st-pole.r{text-align:left;}
+.st-pole.hit{color:var(--text);}
+.st-track{display:flex;align-items:center;gap:4px;position:relative;}
+.st-track::before{content:"";position:absolute;left:6px;right:6px;top:50%;height:2px;background:var(--border);z-index:0;}
+.st-cell{position:relative;z-index:1;width:16px;height:16px;border-radius:50%;border:2px solid var(--border);background:var(--surface);padding:0;cursor:pointer;}
+.st-cell.mid{width:12px;height:12px;border-radius:2px;transform:rotate(45deg);}
+.st-cell.on{background:var(--c);border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent);}
+.st-cell.cmp{border-color:var(--text);border-width:2.5px;}
+.st-cell.on.cmp{box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent),0 0 0 5px var(--text);}
+.st-cell:disabled{cursor:default;}
+.st-legend{display:flex;gap:16px;justify-content:center;font-size:11px;font-weight:700;padding:6px 12px 2px;}
+.st-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
+.st-legend .me::before{background:var(--c);}
+.st-legend .cp::before{border:2.5px solid var(--text);box-sizing:border-box;}
+.st-sub{display:block;font-size:11px;color:var(--muted);font-weight:700;margin:2px 0 6px;}
+.st-tags{display:flex;flex-wrap:wrap;gap:6px;}
+.st-tag{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;padding:4px 6px 4px 10px;border-radius:3px;background:var(--navy2);color:#fff;}
+.st-tag.ro{padding:3px 9px;font-size:11px;}
+.st-tag button{border:none;background:none;color:var(--on-navy-muted);font-size:14px;line-height:1;cursor:pointer;padding:0 2px;}
+.st-empty{font-size:12px;color:var(--muted);}
+.st-suggest{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.st-sug{font-size:11px;padding:4px 8px;border-radius:3px;border:1px dashed var(--border);background:none;color:var(--muted);cursor:pointer;font-family:inherit;}
+.st-sim{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--divider);}
+.st-sim:last-child{border-bottom:none;}
+.st-sim-t{flex:0 0 7.5em;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.st-sim-bar{flex:1;height:6px;background:var(--divider);border-radius:3px;overflow:hidden;min-width:0;}
+.st-sim-bar span{display:block;height:100%;}
+.st-sim-v{flex:0 0 34px;text-align:right;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;}
+.st-def input{flex:1 1 0;}
+.st-arrow{color:var(--muted);font-size:12px;flex:0 0 auto;}
+.st-head{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 6px;border-bottom:1px solid var(--divider);}
+.st-form{font-size:12px;font-weight:800;padding:3px 9px;border-radius:3px;background:var(--gold);color:#0c1a33;}
+.st-card .club-note{padding:4px 12px 8px;}
 </style>
 </head>
 <body>
@@ -665,6 +770,10 @@ input,select,textarea{border-radius:4px;}
       <div id="del-msg" style="font-size:12px;"></div>
     </div>
   </div>
+  <div class="card" id="version-card">
+    <div class="card-hdr">バージョン情報</div>
+    <div class="card-body" id="version-body"></div>
+  </div>
 </div>
 
 <!-- 記録 -->
@@ -687,6 +796,7 @@ input,select,textarea{border-radius:4px;}
       <div class="tab active" onclick="switchHistTab('profile',this)">プロフィール</div>
       <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
       <div class="tab" onclick="switchHistTab('snapshot',this)">開幕時R</div>
+      <div class="tab" onclick="switchHistTab('club',this)">クラブ特徴</div>
     </div>
   </div>
   <div id="history-area"></div>
@@ -735,6 +845,24 @@ input,select,textarea{border-radius:4px;}
 </nav>
 
 <script>
+// ══ バージョン ══
+// 新しい版を出すたびに上げる（大きめの更新は真ん中、小さな修正は右端の数字）。履歴は新しい順。
+const APP_VERSION = '2.1.2';
+const APP_CHANGELOG = [
+  { v:'2.1.2', date:'2026-11-08', notes:[
+    '「クラブ特徴」をプレースタイル中心に作り直し（優劣ではなく「どちら寄りか」の軸：ポゼッション↔カウンターなど）',
+    'フォーメーションとスタイルのタグを設定できるように',
+    'スタイルが近いチームを表示',
+  ]},
+  { v:'2.1.1', date:'2026-11-08', notes:[
+    'バージョン表記を開始（設定タブ下の「バージョン情報」）',
+    'ボタン・保存済み・勝ったチームなどの強調色を緑から紺・黄に変更',
+    '記録し終えた試合のスコア欄が白黒反転する表示をやめた',
+    '数字の書体を元の書体に戻した',
+    '分析に「クラブ特徴」を追加（項目を自由に追加し、チームごとに1〜10で設定・レーダーチャートで比較）',
+  ]},
+];
+
 /* ════════════════════════════════════════════════════════════
  * WINNER PRO — 目次
  * ────────────────────────────────────────────────────────────
@@ -1055,6 +1183,7 @@ function go(name, btn){
   if(name==='matches'){ loadMatches(); renderPlayoff(); if(leagueSubtab==='forecast') renderNextRoundForecast(); }
   if(name==='predict') renderPredictPage();
   if(name==='cup') renderCup();
+  if(name==='setup') renderVersionInfo();
 }
 
 // リーグタブ内の「試合 / プレーオフ」切り替え
@@ -1108,6 +1237,14 @@ function jointNoteHtml(yr, div){
 function specialRuleNoteHtml(d){
   if(!d?.joint && !d?.pkDraw) return '';
   return `<div class="joint-banner">${d.joint?`<b>${getDivName(2)}・${getDivName(3)}合同リーグ</b>（昇降格なし）／`:''}90分で同点の試合はPK戦：PK勝ち<b>2点</b>・PK負け<b>1点</b></div>`;
+}
+
+// 設定タブ下のバージョン情報（更新履歴）
+function renderVersionInfo(){
+  const el = document.getElementById('version-body'); if(!el) return;
+  el.innerHTML = `<div class="ver-now">WINNER PRO <b>v${APP_VERSION}</b></div>` + APP_CHANGELOG.map(c=>`
+    <div class="ver-entry"><div class="ver-head">v${c.v}<span>${c.date}</span></div>
+    <ul>${c.notes.map(n=>`<li>${n}</li>`).join('')}</ul></div>`).join('');
 }
 
 // ══ 部門タブ共通処理 ══
@@ -2591,6 +2728,7 @@ function switchHistTab(tab, el){
   else if(tab==='trend')renderHistTrend();
   else if(tab==='snapshot')renderRatingSnapshots();
   else if(tab==='h2h')renderH2HInHistory();
+  else if(tab==='club')renderClubParams();
   else renderHistInseason();
 }
 
@@ -2611,7 +2749,7 @@ function switchHistCategory(cat){
 
 // 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
 const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
-  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis' };
+  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis', club:'analysis' };
 function restoreHistoryView(){
   const cat = HIST_TAB_CATEGORY[histTab] || 'records';
   HIST_CATEGORY.forEach(c=>{
@@ -3009,6 +3147,165 @@ function showRatingSnapshot(){
   contentEl.innerHTML = html;
 }
 
+// ══ クラブ特徴（プレースタイル） ══
+// 強い・弱いではなく「どちら寄りか」を記録する。
+// db.clubStyle = {
+//   axes:[{id, left, right}],               … 軸（例：ポゼッション ↔ カウンター）。自由に追加・変更・削除できる
+//   values:{ チーム名:{ 軸id: -3〜+3 } },      … -3＝強く左寄り、0＝中間、+3＝強く右寄り（未設定は値なし）
+//   formation:{ チーム名:"4-2-3-1" }, tags:{ チーム名:["堅守速攻", …] }, notes:{ チーム名:"メモ" }
+// }
+// 記録・分析用で、順位予想の計算には使わない。
+const STYLE_AXES_DEFAULT = [
+  ['ポゼッション','カウンター'],
+  ['ハイプレス','リトリート'],
+  ['短いパス','ロングボール'],
+  ['サイド攻撃','中央突破'],
+  ['高い最終ライン','低い最終ライン'],
+  ['組織で崩す','個の力で崩す'],
+  ['攻撃的','守備的'],
+];
+const STYLE_SCALE = [-3,-2,-1,0,1,2,3];
+const STYLE_SCALE_LABEL = {'-3':'かなり左寄り','-2':'左寄り','-1':'やや左寄り','0':'中間','1':'やや右寄り','2':'右寄り','3':'かなり右寄り'};
+const FORMATIONS = ['4-4-2','4-2-3-1','4-3-3','4-1-4-1','4-3-1-2','3-4-2-1','3-5-2','3-4-3','5-3-2','5-4-1'];
+const STYLE_TAG_SUGGEST = ['堅守速攻','パスサッカー','前線からの守備','走力重視','セットプレーが武器','空中戦に強い','サイドアタッカーが軸','ストライカー頼み','若手主体','ベテラン主体','外国籍選手が軸','守備的','攻撃的','終盤に強い','ホームで強い'];
+function clubStyleData(){
+  if(!db.clubStyle){
+    db.clubStyle = { axes: STYLE_AXES_DEFAULT.map(([l,r],i)=>({id:'a'+(i+1), left:l, right:r})), values:{}, formation:{}, tags:{}, notes:{}, _next:STYLE_AXES_DEFAULT.length+1 };
+    // v2.1.1 の「クラブ特徴」で書いたメモは引き継ぐ（1〜10の値はプレースタイルとは別物なので引き継がない）
+    Object.entries(db.clubParams?.notes||{}).forEach(([t,n])=>{ if(n) db.clubStyle.notes[t]=n; });
+  }
+  const cs = db.clubStyle;
+  ['values','formation','tags','notes'].forEach(k=>{ cs[k]=cs[k]||{}; });
+  cs.axes = cs.axes||[];
+  return cs;
+}
+let clubTeam = null, clubCompare = '', clubDelArmed = null;
+function clubTeamsSorted(){
+  return Object.keys(db.teams).filter(t=>db.teams[t].active).sort((a,b)=>(db.teams[a].div-db.teams[b].div)||a.localeCompare(b,'ja'));
+}
+function escHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// スタイルの近さ：両チームとも値がある軸だけで比べる（差の平均を0〜100%に換算）。共通の軸が3つ未満なら比べない
+function styleSimilarity(a, b){
+  const cs = clubStyleData(), va = cs.values[a]||{}, vb = cs.values[b]||{};
+  const common = cs.axes.filter(x=>va[x.id]!=null && vb[x.id]!=null);
+  if(common.length<3) return null;
+  const meanDiff = common.reduce((s,x)=>s+Math.abs(va[x.id]-vb[x.id]),0)/common.length; // 0〜6
+  return { pct: Math.round((1-meanDiff/6)*100), n: common.length };
+}
+// 軸ごとの横棒：左右の端に軸の名前、目盛りの上に丸。比較チームは白抜きの丸
+function styleAxisRowHtml(ax, v, cmp, col, editable){
+  const cells = STYLE_SCALE.map(k=>{
+    const on = v===k, isCmp = cmp===k;
+    return `<button class="st-cell ${on?'on':''} ${isCmp?'cmp':''} ${k===0?'mid':''}" style="--c:${col}" ${editable?`onclick="setClubStyle('${ax.id}',${k})"`:'tabindex="-1" disabled'} aria-label="${escHtml(STYLE_SCALE_LABEL[k])}"></button>`;
+  }).join('');
+  return `<div class="st-axis">
+    <span class="st-pole l ${v!=null&&v<0?'hit':''}">${escHtml(ax.left)}</span>
+    <span class="st-track">${cells}</span>
+    <span class="st-pole r ${v!=null&&v>0?'hit':''}">${escHtml(ax.right)}</span></div>`;
+}
+function renderClubParams(){
+  const el = document.getElementById('history-area');
+  const teams = clubTeamsSorted();
+  if(!teams.length){ el.innerHTML = '<div class="loading">チームがいません</div>'; return; }
+  const cs = clubStyleData();
+  if(!teams.includes(clubTeam)) clubTeam = teams[0];
+  if(clubCompare && (!teams.includes(clubCompare) || clubCompare===clubTeam)) clubCompare = '';
+  const opt = (sel, includeNone) => (includeNone?'<option value="">比較しない</option>':'') + [1,2,3].map(d=>{
+    const ts = teams.filter(t=>db.teams[t].div===d); if(!ts.length) return '';
+    return `<optgroup label="${getDivName(d)}">${ts.map(t=>`<option value="${escHtml(t)}" ${t===sel?'selected':''}>${escHtml(t)}</option>`).join('')}</optgroup>`; }).join('');
+  const vals = cs.values[clubTeam]||{}, cmpVals = clubCompare ? (cs.values[clubCompare]||{}) : {};
+  const col = divColor(db.teams[clubTeam]?.div);
+  const tags = cs.tags[clubTeam]||[];
+
+  let html = `<div class="club-pick">
+      <select id="club-team" onchange="clubTeam=this.value;renderClubParams()" aria-label="チーム">${opt(clubTeam,false)}</select>
+      <select id="club-compare" onchange="clubCompare=this.value;renderClubParams()" aria-label="比較するチーム">${opt(clubCompare,true)}</select>
+    </div>`;
+  // プレースタイルの軸
+  html += `<div class="slbl">プレースタイル</div><div class="card st-card">`;
+  if(clubCompare) html += `<div class="st-legend"><span class="me" style="--c:${col}">${escHtml(clubTeam)}</span><span class="cp">${escHtml(clubCompare)}</span></div>`;
+  cs.axes.forEach(ax=>{ html += styleAxisRowHtml(ax, vals[ax.id], clubCompare?cmpVals[ax.id]:undefined, col, true); });
+  html += `</div><p class="note-sm">目盛りを押すと設定、同じ目盛りをもう一度押すと未設定に戻ります。真ん中は「どちらでもない」です。</p>`;
+  // フォーメーション・タグ
+  html += `<div class="slbl">基本フォーメーション・特徴タグ</div><div class="card"><div class="card-body">
+      <div class="field"><label for="club-form">基本フォーメーション</label>
+        <input id="club-form" list="club-form-list" value="${escHtml(cs.formation[clubTeam]||'')}" placeholder="例：4-2-3-1" onchange="setClubFormation(this.value)">
+        <datalist id="club-form-list">${FORMATIONS.map(f=>`<option value="${f}">`).join('')}</datalist></div>
+      <label class="st-sub">特徴タグ</label>
+      <div class="st-tags">${tags.length?tags.map((t,i)=>`<span class="st-tag">${escHtml(t)}<button onclick="removeClubTag(${i})" aria-label="${escHtml(t)}を外す">×</button></span>`).join(''):'<span class="st-empty">まだありません</span>'}</div>
+      <div class="club-def" style="padding:8px 0 4px;border:none;"><input id="club-newtag" placeholder="タグを追加（例：堅守速攻）" aria-label="追加するタグ" onkeydown="if(event.key==='Enter'){event.preventDefault();addClubTag(this.value);}">
+        <button class="btn btn-g btn-sm" onclick="addClubTag(document.getElementById('club-newtag').value)">追加</button></div>
+      <div class="st-suggest">${STYLE_TAG_SUGGEST.filter(t=>!tags.includes(t)).map(t=>`<button class="st-sug" onclick="addClubTag('${t}')">＋${t}</button>`).join('')}</div>
+    </div></div>`;
+  // スタイルが近いチーム
+  const sims = teams.filter(t=>t!==clubTeam).map(t=>({t, s:styleSimilarity(clubTeam,t)})).filter(x=>x.s).sort((a,b)=>b.s.pct-a.s.pct).slice(0,5);
+  html += `<div class="slbl">スタイルが近いチーム</div><div class="card">`;
+  html += sims.length ? sims.map(x=>`<div class="st-sim"><span class="st-sim-t">${escHtml(x.t)}<span class="cup-div-badge" style="background:${divTint(db.teams[x.t].div)};color:${divColor(db.teams[x.t].div)};">${divShortName(db.teams[x.t].div)}</span></span>
+      <span class="st-sim-bar"><span style="width:${x.s.pct}%;background:${col};"></span></span><span class="st-sim-v">${x.s.pct}%</span>
+      <button class="sbtn" onclick="clubCompare='${escHtml(x.t)}';renderClubParams()">比較</button></div>`).join('')
+    : `<div class="loading" style="padding:14px;">3つ以上の軸を設定したチームどうしで比べます</div>`;
+  html += `</div>`;
+  // メモ
+  html += `<div class="slbl">メモ</div><div class="card"><div class="card-body">
+      <textarea id="club-note" placeholder="例：今季は監督交代で、前からの守備がより強くなった" onchange="setClubNote(this.value)">${escHtml(cs.notes[clubTeam]||'')}</textarea></div></div>`;
+  // 軸の編集
+  html += `<div class="slbl">軸の編集（全チーム共通）</div><div class="card">`;
+  cs.axes.forEach((ax,i)=>{
+    html += `<div class="club-def st-def">
+      <input value="${escHtml(ax.left)}" aria-label="左側の名前" onchange="renameStyleAxis('${ax.id}','left',this.value)"><span class="st-arrow">↔</span>
+      <input value="${escHtml(ax.right)}" aria-label="右側の名前" onchange="renameStyleAxis('${ax.id}','right',this.value)">
+      <button class="sbtn" onclick="moveStyleAxis('${ax.id}',-1)" ${i===0?'disabled':''} aria-label="上へ">▲</button>
+      <button class="sbtn" onclick="moveStyleAxis('${ax.id}',1)" ${i===cs.axes.length-1?'disabled':''} aria-label="下へ">▼</button>
+      <button class="sbtn club-del ${clubDelArmed===ax.id?'armed':''}" onclick="deleteStyleAxis('${ax.id}')">${clubDelArmed===ax.id?'本当に':'削除'}</button></div>`;
+  });
+  html += `<div class="club-def st-def"><input id="st-new-l" placeholder="左（例：堅い守備）" aria-label="新しい軸の左側"><span class="st-arrow">↔</span>
+      <input id="st-new-r" placeholder="右（例：打ち合い）" aria-label="新しい軸の右側">
+      <button class="btn btn-g btn-sm" onclick="addStyleAxis()">追加</button></div></div>`;
+  html += `<p class="note-sm">※ クラブ特徴は記録・分析用で、順位予想の計算には使っていません。</p>`;
+  el.innerHTML = html;
+}
+function setClubStyle(id, v){
+  const cs = clubStyleData(); const cur = cs.values[clubTeam]||(cs.values[clubTeam]={});
+  if(cur[id]===v) delete cur[id]; else cur[id] = v;
+  save(db); renderClubParams();
+}
+function setClubFormation(v){ const cs=clubStyleData(); v=v.trim(); if(v) cs.formation[clubTeam]=v; else delete cs.formation[clubTeam]; save(db); toast('フォーメーションを保存しました'); }
+function addClubTag(v){
+  v = String(v||'').trim(); if(!v){ toast('タグを入力してください', true); return; }
+  const cs=clubStyleData(); const list=cs.tags[clubTeam]||(cs.tags[clubTeam]=[]);
+  if(list.includes(v)){ toast('同じタグがあります', true); return; }
+  list.push(v); save(db); renderClubParams();
+}
+function removeClubTag(i){ const cs=clubStyleData(); const list=cs.tags[clubTeam]||[]; list.splice(i,1); if(!list.length) delete cs.tags[clubTeam]; save(db); renderClubParams(); }
+function setClubNote(text){ const cs=clubStyleData(); if(text.trim()) cs.notes[clubTeam]=text; else delete cs.notes[clubTeam]; save(db); toast('メモを保存しました'); }
+function addStyleAxis(){
+  const l=(document.getElementById('st-new-l')?.value||'').trim(), r=(document.getElementById('st-new-r')?.value||'').trim();
+  if(!l||!r){ toast('左右両方の名前を入力してください', true); return; }
+  const cs=clubStyleData(); cs._next=cs._next||cs.axes.length+1;
+  cs.axes.push({id:'a'+(cs._next++), left:l, right:r}); save(db); renderClubParams();
+}
+function renameStyleAxis(id, side, v){ v=v.trim(); const cs=clubStyleData(); const ax=cs.axes.find(x=>x.id===id); if(!ax) return; if(v){ ax[side]=v; save(db); } renderClubParams(); }
+function moveStyleAxis(id, dir){ const cs=clubStyleData(); const i=cs.axes.findIndex(x=>x.id===id), j=i+dir; if(i<0||j<0||j>=cs.axes.length) return; [cs.axes[i],cs.axes[j]]=[cs.axes[j],cs.axes[i]]; save(db); renderClubParams(); }
+function deleteStyleAxis(id){
+  if(clubDelArmed!==id){ clubDelArmed=id; renderClubParams(); return; }
+  const cs=clubStyleData(); cs.axes=cs.axes.filter(x=>x.id!==id); Object.values(cs.values).forEach(v=>{ delete v[id]; });
+  clubDelArmed=null; save(db); renderClubParams();
+}
+// プロフィールに出す要約（何か1つでも設定されていれば）
+function clubParamsSummaryHtml(team){
+  const cs = db.clubStyle; if(!cs) return '';
+  const vals = cs.values?.[team]||{}, tags = cs.tags?.[team]||[], form = cs.formation?.[team], note = cs.notes?.[team];
+  const setAxes = (cs.axes||[]).filter(a=>vals[a.id]!=null);
+  if(!setAxes.length && !tags.length && !form && !note) return '';
+  const col = divColor(db.teams[team]?.div);
+  let html = `<div class="slbl">クラブ特徴</div><div class="card st-card">`;
+  if(form || tags.length) html += `<div class="st-head">${form?`<span class="st-form">${escHtml(form)}</span>`:''}${tags.map(t=>`<span class="st-tag ro">${escHtml(t)}</span>`).join('')}</div>`;
+  setAxes.forEach(ax=>{ html += styleAxisRowHtml(ax, vals[ax.id], undefined, col, false); });
+  if(note) html += `<p class="club-note">${escHtml(note)}</p>`;
+  html += `</div>`;
+  return html;
+}
+
 // ══ チーム別プロフィール ══
 // チームのリーグ戦を時系列に並べ、4種類の連続記録（最長と、いま続いているもの）を求める
 const STREAK_KINDS = [
@@ -3143,6 +3440,7 @@ function showTeamProfile(){
     <div class="stat-pill"><div class="stat-pill-val">${p}</div><div class="stat-pill-lbl">通算試合数</div></div>
   </div>`;
 
+  html += clubParamsSummaryHtml(team);
   html += `<div class="slbl">通算成績</div><div class="card"><div class="card-body">
     <div style="display:flex;justify-content:space-around;text-align:center;">
       <div><div style="font-size:20px;font-weight:700;color:var(--g);">${w}</div><div style="font-size:10px;color:var(--muted);">勝</div></div>
