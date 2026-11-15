@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
-<!-- WINNER PRO v2.3.0（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
+<!-- WINNER PRO v2.3.1（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -580,6 +580,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 .mu-p small{display:block;font-size:8.5px;font-weight:400;color:var(--muted);}
 .champ-tbl td{font-size:12px;white-space:nowrap;}
 .champ-tbl td small{display:block;font-size:9.5px;color:var(--muted);font-weight:400;}
+
+/* ══ v2.3.1：順位表のバリエーション・対戦履歴 ══ */
+.stbl-var .var-ov{font-size:11px;color:var(--muted);white-space:nowrap;}
+.var-form{display:flex;gap:2px;margin-top:3px;}
+.var-form i{display:block;width:9px;height:4px;border-radius:1px;background:var(--muted);}
+.var-form i.fd-W{background:var(--g);} .var-form i.fd-D{background:var(--gold);} .var-form i.fd-L{background:var(--red);}
 </style>
 </head>
 <body>
@@ -594,8 +600,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
   </div>
   <div class="tabs" id="dtabs-home"></div>
   <div class="tabs" style="padding-top:0;">
-    <div class="tab active" id="stview-tab-detail" onclick="switchStandingsView('detail')">詳細</div>
-    <div class="tab" id="stview-tab-form" onclick="switchStandingsView('form')">直近5試合</div>
+    <div class="tab active" data-stview="detail" onclick="switchStandingsView('detail')">総合</div>
+    <div class="tab" data-stview="form" onclick="switchStandingsView('form')">直近5試合</div>
+    <div class="tab" data-stview="home" onclick="switchStandingsView('home')">ホーム</div>
+    <div class="tab" data-stview="away" onclick="switchStandingsView('away')">アウェイ</div>
+    <div class="tab" data-stview="first" onclick="switchStandingsView('first')">前半戦</div>
+    <div class="tab" data-stview="second" onclick="switchStandingsView('second')">後半戦</div>
   </div>
   <div class="home-round">
     <button class="rstep" onclick="stepHomeRound(-1)" aria-label="前の節の時点へ">◀</button>
@@ -877,8 +887,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 <script>
 // ══ バージョン ══
 // 新しい版を出すたびに上げる（大きめの更新は真ん中、小さな修正は右端の数字）。履歴は新しい順。
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const APP_CHANGELOG = [
+  { v:'2.3.1', date:'2026-11-15', notes:[
+    '順位表に「直近5試合・ホーム・アウェイ・前半戦・後半戦」ごとの順位を追加',
+    'チーム詳細の対戦成績：履歴は直近10試合を表示（「すべて表示」で全試合）',
+    '得意チーム・苦手チーム：直近10シーズンの対戦で判定',
+  ]},
   { v:'2.3.0', date:'2026-11-15', notes:[
     '記録タブを「記録／分析／チーム詳細」の3つに分け直し',
     '記録：順位変動・年度別推移・歴代タイトル（歴代の優勝チーム一覧つき）・連勝連敗',
@@ -1357,12 +1372,14 @@ function pkOutcome(m, isHome){
 }
 // 試合の一覧から、チームごとの成績（試合・勝・分・敗・得・失・差・勝点）を集計する。
 // 結果が入っていない試合と、teams にいないチームの試合は数えない。
-function tallyStandings(teams, matches){
+// include(m, team, isHome)：渡すと、その試合をそのチームの成績に数えるかを決められる（ホームだけ・直近5試合だけ等）
+function tallyStandings(teams, matches, include=null){
   const s = {};
   teams.forEach(t=>s[t]={team:t,p:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0,pkw:0,pkl:0});
   (matches||[]).forEach(m=>{
     if(!m.played || !s[m.home] || !s[m.away]) return;
     [[m.home, m.home_score, m.away_score, true], [m.away, m.away_score, m.home_score, false]].forEach(([t, gf, ga, isHome])=>{
+      if(include && !include(m, t, isHome)) return;
       const r = s[t];
       r.p++; r.gf += gf; r.ga += ga; r.gd = r.gf - r.ga;
       if(gf>ga){ r.w++; r.pts += 3; }
@@ -1398,7 +1415,7 @@ function calcStandings(yr,div,upto=null){ yr=String(yr);
 }
 
 // ══ 順位表（ホーム） ══
-let standingsView = 'detail'; // 'detail' | 'form'
+let standingsView = 'detail'; // 'detail'（総合）| 'form' | 'home' | 'away' | 'first' | 'second'
 // 「何節終了時点」の選択肢を、その部門で結果が入っている節に合わせて作り直す。選んでいた節がまだあれば維持する
 function refreshHomeRoundSelect(d){
   const sel = document.getElementById('home-round');
@@ -1423,9 +1440,43 @@ function stepHomeRound(delta){
 
 function switchStandingsView(view){
   standingsView = view;
-  document.getElementById('stview-tab-detail').classList.toggle('active', view==='detail');
-  document.getElementById('stview-tab-form').classList.toggle('active', view==='form');
+  document.querySelectorAll('[data-stview]').forEach(t=>t.classList.toggle('active', t.dataset.stview===view));
   loadStandings();
+}
+
+// 前半戦と後半戦の境目（通し節番号）。ホーム＆アウェイの2回総当たりなら1回目の最終節、それ以外は全節の半分
+function halfSeasonRound(d){
+  const ms = d?.matches||[];
+  if(!ms.length) return 0;
+  if(ms.some(m=>m.leg===2)) return Math.max(...ms.filter(m=>m.leg===1).map(m=>m.round));
+  return Math.ceil(Math.max(...ms.map(m=>getContinuousRound(ms, m.leg, m.round)))/2);
+}
+// 総合以外の順位表：チームごとに数える試合を絞って集計する
+const STANDINGS_VARIANTS = {
+  form:   { label:'直近5試合', note:'各チームの直近5試合だけで集計した順位です。' },
+  home:   { label:'ホーム',     note:'ホームゲームだけで集計した順位です。' },
+  away:   { label:'アウェイ',   note:'アウェイゲームだけで集計した順位です。' },
+  first:  { label:'前半戦',     note:'' },
+  second: { label:'後半戦',     note:'' },
+};
+function calcVariantStandings(d, view, upto){
+  const played = playedUpTo(d, upto);
+  const half = halfSeasonRound(d);
+  const cr = m => getContinuousRound(d.matches, m.leg, m.round);
+  let recentIds = null;
+  if(view==='form'){
+    // チームごとに、その時点までの最新5試合を選ぶ
+    recentIds = {};
+    d.teams.forEach(t=>{
+      recentIds[t] = new Set(played.filter(m=>m.home===t||m.away===t)
+        .sort((a,b)=>(a.playedAt||0)-(b.playedAt||0) || cr(a)-cr(b) || a.id-b.id).slice(-5).map(m=>m.id));
+    });
+  }
+  const include = (m, team, isHome) =>
+    view==='home' ? isHome : view==='away' ? !isHome :
+    view==='first' ? cr(m)<=half : view==='second' ? cr(m)>half :
+    view==='form' ? recentIds[team].has(m.id) : true;
+  return sortStandings(tallyStandings(d.teams, played, include)).map((r,i)=>({...r, rank:i+1}));
 }
 
 // 指定チームの直近N試合の結果を、新しい順ではなく「古い→新しい」の順で返す
@@ -1528,28 +1579,30 @@ function loadStandings(){
 
   const ptsHtml = (pts) => `<span class="pts">${pts}</span>`;
 
-  if(standingsView==='form'){
-    // ── 直近5試合表示モード ──
-    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact"><thead><tr><th>#</th><th class="tl">チーム</th><th>勝点</th><th>直近5試合（古→新）</th></tr></thead><tbody>`;
-    rows.forEach((r,i)=>{
-      const {rowClass, badge, rc, podiumIcon} = rowMeta(i);
-      const form = getRecentForm(yr, div, r.team, 5, upto);
-      const formHtml = form.length
-        ? form.map(f=>{
-            const bg = f.result==='W'?'var(--g)':f.result==='L'?'var(--red)':'var(--gold)';
-            const title = `第${f.cround}節 ${f.isHome?'H':'A'} vs ${f.opponent} ${f.my}-${f.opp}`;
-            return `<span class="form-dot" style="background:${bg};" title="${title}">${f.result}</span>`;
-          }).join('')
-        : '<span style="color:var(--muted);font-size:10px;">—</span>';
-      html+=`<tr class="${rowClass}"><td><span class="rn ${rc}">${r.rank}</span>${moveHtml(r.team)}</td>
-        <td class="tl">${r.team}${podiumIcon}${badge}</td>
-        <td>${ptsHtml(r.pts)}</td>
-        <td style="white-space:nowrap;">${formHtml}</td></tr>`;
+  if(STANDINGS_VARIANTS[standingsView]){
+    // ── 直近5試合・ホーム・アウェイ・前半戦・後半戦の順位 ──
+    const view = standingsView, vr = calcVariantStandings(d, view, upto);
+    const overall = {}; rows.forEach(r=>overall[r.team]=r.rank);
+    const half = halfSeasonRound(d);
+    let note = STANDINGS_VARIANTS[view].note;
+    if(view==='first') note = `第1〜${half}節の試合だけで集計した順位です。`;
+    if(view==='second') note = `第${half+1}節以降の試合だけで集計した順位です。`;
+    if(view==='second' && !vr.some(r=>r.p)){
+      html += `<div class="loading">後半戦（第${half+1}節〜）の結果はまだありません</div>`;
+      document.getElementById('standings-area').innerHTML = specialRuleNoteHtml(d)+html; return;
+    }
+    html+=`<div class="card card-wide"><div class="tbl-scroll"><table class="stbl stbl-compact stbl-detail stbl-var ${pkMode?'stbl-pk':''}"><thead><tr><th>#</th><th class="tl">チーム</th><th>試</th><th>勝</th><th>${pkMode?'PK':'分'}</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝点</th><th>総合</th></tr></thead><tbody>`;
+    vr.forEach((r,i)=>{
+      const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
+      const gd = r.gd>0?'+'+r.gd:r.gd;
+      const gdCol = r.gd>0?'color:var(--g)':r.gd<0?'color:var(--red)':'';
+      const form = view==='form' ? `<span class="var-form">${getRecentForm(yr, div, r.team, 5, upto).map(f=>`<i class="fd-${f.result}" title="第${f.cround}節 ${f.isHome?'H':'A'} vs ${escHtml(f.opponent)} ${f.my}-${f.opp}"></i>`).join('')}</span>` : '';
+      html+=`<tr><td><span class="rn ${rc}">${r.rank}</span></td><td class="tl">${r.team}${form}</td><td>${r.p}</td><td>${r.w}</td><td>${pkMode?`${r.pkw}-${r.pkl}`:r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td style="${gdCol}">${gd}</td><td>${ptsHtml(r.pts)}</td>
+        <td class="var-ov">${overall[r.team]}位</td></tr>`;
     });
     html+=`</tbody></table></div></div>`;
     html+=`<p style="font-size:11px;color:var(--muted);padding:0 13px 16px;line-height:1.6;">
-      ※ 左が古い試合、右が最新です。<span style="color:var(--g);font-weight:700;">W</span>=勝ち／<span style="color:var(--gold);font-weight:700;">D</span>=引き分け／<span style="color:var(--red);font-weight:700;">L</span>=負け。<br>
-      ※ 順位の横の▲▼は前節からの変動です。${upto?`<br>※ 第${upto}節終了時点の順位です（それ以前の節の延期分も、結果が入っていれば含みます）。`:''}
+      ※ ${note}並び順は総合と同じ（勝点→得失点差→総得点）です。右端の「総合」は、ふだんの順位表での順位です。${view==='form'?'<br>※ チーム名の下の印は直近5試合の結果（左が古い）です。':''}${upto?`<br>※ 第${upto}節終了時点までの試合で集計しています。`:''}
     </p>`;
   } else {
     // ── 詳細表示モード ──
@@ -2681,6 +2734,8 @@ function buildH2HSelects(){
   if(teams.length>1) elB.selectedIndex=1;
 }
 
+const H2H_RECENT = 10;   // 対戦履歴に最初に出す試合数
+let h2hShowAll = '';     // 「すべて表示」にしている組み合わせ（'A|B'）
 function showH2H(a, b, targetId){
   a = a ?? document.getElementById('h2h-a')?.value;
   b = b ?? document.getElementById('h2h-b')?.value;
@@ -2736,9 +2791,11 @@ function showH2H(a, b, targetId){
     <div><div class="h2h-val" style="color:var(--red)">${wB}</div><div class="h2h-lbl">${b} 勝</div></div>
   </div>
   <div style="text-align:center;font-size:12px;color:var(--muted);padding:0 13px 12px;">通算 ${gfA}得点/${gfB}失点（${a}視点） | ${hist.length}試合</div></div>`;
+  const showAll = h2hShowAll===`${a}|${b}`;
+  const shown = showAll ? hist : hist.slice(0, H2H_RECENT);
   if(hist.length){
-    html+=`<div class="slbl">対戦履歴</div><div class="card">`;
-    hist.forEach(h=>{
+    html+=`<div class="slbl">対戦履歴${hist.length>H2H_RECENT&&!showAll?`（直近${H2H_RECENT}試合）`:''}</div><div class="card">`;
+    shown.forEach(h=>{
       const rc=h.res==='W'?'var(--g)':h.res==='L'?'var(--red)':'var(--gold)';
       html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);gap:8px;">
         <div style="font-size:11px;color:var(--muted);flex:0 0 auto;">${getSeasonLabel(h.yr)}<br>${h.divLabel}</div>
@@ -2747,6 +2804,10 @@ function showH2H(a, b, targetId){
       </div>`;
     });
     html+=`</div>`;
+  }
+  if(hist.length>H2H_RECENT){
+    const arg = s => `'${escHtml(s).replace(/'/g,"\\'")}'`;
+    html += `<div style="text-align:center;padding:4px 0 8px;"><button class="btn btn-sm" onclick="h2hShowAll=${showAll?"''":arg(a+'|'+b)};showH2H(${arg(a)},${arg(b)},'${targetId||'h2h-area'}')">${showAll?`直近${H2H_RECENT}試合だけ表示`:`すべて表示（${hist.length}試合）`}</button></div>`;
   }
   document.getElementById(targetId||'h2h-area').innerHTML=html;
 }
@@ -3567,7 +3628,10 @@ function teamGameRecordsHtml(team, games){
 }
 // 得意チーム・苦手チーム：相手ごとの1試合あたり勝点で並べる（3試合以上対戦した相手が対象）
 const MATCHUP_MIN_GAMES = 3;
+const MATCHUP_SEASONS = 10; // 直近何シーズンの対戦で判定するか
 function teamMatchupHtml(team, games){
+  const recent = new Set(getSeasons().slice().sort((x,y)=>parseInt(y)-parseInt(x)).slice(0, MATCHUP_SEASONS));
+  games = games.filter(g=>recent.has(g.yr));
   const by = {};
   games.forEach(g=>{ const o = by[g.opp]||(by[g.opp]={opp:g.opp,n:0,w:0,d:0,l:0,pts:0,gd:0});
     o.n++; o.pts+=g.pts; o.gd+=g.gf-g.ga; o[g.res==='W'?'w':g.res==='L'?'l':'d']++; });
@@ -3584,7 +3648,7 @@ function teamMatchupHtml(team, games){
       <span class="mu-p">${o.ppg.toFixed(2)}<small>勝点/試合</small></span></button>`;
   html += `<div class="mu-head good">得意</div>${good.map(o=>row(o,'good')).join('')}`;
   if(bad.length) html += `<div class="mu-head bad">苦手</div>${bad.map(o=>row(o,'bad')).join('')}`;
-  return html + `<p class="sa-note" style="padding:0 13px 10px;margin:0;">リーグ戦で${MATCHUP_MIN_GAMES}試合以上対戦した相手が対象。タップすると下の対戦成績に切り替わります。</p></div>`;
+  return html + `<p class="sa-note" style="padding:0 13px 10px;margin:0;">直近${MATCHUP_SEASONS}シーズンのリーグ戦で${MATCHUP_MIN_GAMES}試合以上対戦した相手が対象。タップすると下の対戦成績に切り替わります。</p></div>`;
 }
 // 部門ごとに切り替えられる記録（得意・苦手／連続記録／1試合記録）
 let profileRecDiv = 0;
