@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
-<!-- WINNER PRO v2.2.0（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
+<!-- WINNER PRO v2.3.0（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -568,6 +568,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 .sa-tbl td small{display:block;font-size:9px;font-weight:400;color:var(--muted);}
 .sa-tbl td.na{color:var(--muted);font-weight:400;}
 .sa-note{font-size:11px;color:var(--muted);line-height:1.7;margin-top:6px;}
+
+/* ══ v2.3.0：チーム詳細 ══ */
+.mu-head{font-size:10px;font-weight:700;letter-spacing:.1em;padding:8px 13px 4px;}
+.mu-head.good{color:var(--gold);} .mu-head.bad{color:var(--red);}
+.mu-row{display:flex;align-items:center;gap:8px;width:100%;padding:9px 13px;border:0;border-bottom:1px solid var(--divider);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer;}
+.mu-row.good{box-shadow:inset 3px 0 0 var(--gold);} .mu-row.bad{box-shadow:inset 3px 0 0 var(--red);}
+.mu-t{flex:1;font-size:13px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mu-r{font-size:11px;color:var(--muted);white-space:nowrap;}
+.mu-p{flex:0 0 58px;text-align:right;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+.mu-p small{display:block;font-size:8.5px;font-weight:400;color:var(--muted);}
+.champ-tbl td{font-size:12px;white-space:nowrap;}
+.champ-tbl td small{display:block;font-size:9.5px;color:var(--muted);font-weight:400;}
 </style>
 </head>
 <body>
@@ -801,22 +813,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
     <div class="tabs" style="padding:7px 0 0;margin:0;">
       <div class="tab active" id="hcat-tab-records" onclick="switchHistCategory('records')">記録</div>
       <div class="tab" id="hcat-tab-analysis" onclick="switchHistCategory('analysis')">分析</div>
+      <div class="tab" id="hcat-tab-team" onclick="switchHistCategory('team')">チーム詳細</div>
     </div>
     <div class="tabs" id="hcat-sub-records" style="padding:2px 0 7px;margin:0;">
-      <div class="tab active" onclick="switchHistTab('alltime',this)">歴代</div>
-      <div class="tab" onclick="switchHistTab('titles',this)">タイトル</div>
-      <div class="tab" onclick="switchHistTab('streaks',this)">連勝記録</div>
-      <div class="tab" onclick="switchHistTab('upsets',this)">金星</div>
+      <div class="tab active" onclick="switchHistTab('inseason',this)">順位変動</div>
       <div class="tab" onclick="switchHistTab('trend',this)">年度別推移</div>
-      <div class="tab" onclick="switchHistTab('inseason',this)">順位変動</div>
+      <div class="tab" onclick="switchHistTab('titles',this)">歴代タイトル</div>
+      <div class="tab" onclick="switchHistTab('streaks',this)">連勝連敗</div>
     </div>
     <div class="tabs" id="hcat-sub-analysis" style="padding:2px 0 7px;margin:0;display:none;">
-      <div class="tab active" onclick="switchHistTab('profile',this)">プロフィール</div>
-      <div class="tab" onclick="switchHistTab('h2h',this)">🆚 対戦</div>
+      <div class="tab active" onclick="switchHistTab('upsets',this)">金星</div>
       <div class="tab" onclick="switchHistTab('snapshot',this)">開幕時R</div>
       <div class="tab" onclick="switchHistTab('club',this)">クラブ特徴</div>
       <div class="tab" onclick="switchHistTab('stylean',this)">スタイル分析</div>
     </div>
+    <div class="tabs" id="hcat-sub-team" style="display:none;"></div>
   </div>
   <div id="history-area"></div>
 </div>
@@ -866,8 +877,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 <script>
 // ══ バージョン ══
 // 新しい版を出すたびに上げる（大きめの更新は真ん中、小さな修正は右端の数字）。履歴は新しい順。
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const APP_CHANGELOG = [
+  { v:'2.3.0', date:'2026-11-15', notes:[
+    '記録タブを「記録／分析／チーム詳細」の3つに分け直し',
+    '記録：順位変動・年度別推移・歴代タイトル（歴代の優勝チーム一覧つき）・連勝連敗',
+    'チーム詳細（旧プロフィール）：連続記録などを部門ごとに表示、得意チーム・苦手チーム、対戦成績をチームを選んだ画面で見られるように',
+    '予測の攻守力：「全体」をなくし、上の部門タブに合わせて表示',
+  ]},
   { v:'2.2.0', date:'2026-11-08', notes:[
     'プレースタイルの軸を2本から始める形に（軸の名前は自由に入力）',
     '分析に「スタイル分析」を追加：スタイルマップ、スタイルと勝点ペースの相関、スタイル同士の相性表',
@@ -1148,7 +1165,7 @@ function migrateAddPlayedAt(d){
 let db = load();
 let curDiv = {home:1, matches:1, po:1, predict:1};
 let allMatches = {};
-let histTab = 'alltime';
+let histTab = 'inseason';
 const PAL = ["#00a854","#f5a623","#e53935","#1976d2","#8e24aa","#0097a7","#558b2f","#f57c00","#ad1457","#00838f","#4527a0","#2e7d32"];
 let trendSel = new Set(), isSel = new Set();
 // 「まだ一度も選んでいない初期状態」と「意図的に全解除した状態」を区別するためのフラグ。
@@ -1173,7 +1190,7 @@ function init(){
   renderTeamEditor();
   loadStandings();
   loadMatches();
-  renderHistAlltime();
+  // 記録タブは開いたときに描き直す（restoreHistoryView）
 }
 
 function refreshSeasonSelects(){
@@ -2201,7 +2218,7 @@ function startNewSeason(){
   renderTeamEditor();
   loadStandings();
   loadMatches();
-  renderHistAlltime();
+  // 記録タブは開いたときに描き直す（restoreHistoryView）
 
   msg.style.color='var(--g)';
   msg.textContent = `✓ ${displayName}を開始しました（${started.map(d=>getDivName(d)).join('・')}）${moves.length?` / 昇降格${moves.length}件反映`:''}${skipped.length?` / チーム不足で未開始: ${skipped.map(d=>getDivName(d)).join('・')}`:''}`;
@@ -2268,7 +2285,7 @@ function saveSeasonMeta(yr){
   refreshSeasonSelects();
   loadStandings();
   loadMatches();
-  renderHistAlltime();
+  // 記録タブは開いたときに描き直す（restoreHistoryView）
   alert('保存しました');
 }
 
@@ -2645,7 +2662,7 @@ function deleteSeason(){
   renderTeamEditor();
   loadStandings();
   loadMatches();
-  renderHistAlltime();
+  // 記録タブは開いたときに描き直す（restoreHistoryView）
   msg.style.color='var(--g)';
   msg.textContent = `✓ 「${getSeasonLabel(yr)}」を削除しました`;
   setTimeout(()=>msg.textContent='', 3000);
@@ -2664,9 +2681,9 @@ function buildH2HSelects(){
   if(teams.length>1) elB.selectedIndex=1;
 }
 
-function showH2H(){
-  const a=document.getElementById('h2h-a').value;
-  const b=document.getElementById('h2h-b').value;
+function showH2H(a, b, targetId){
+  a = a ?? document.getElementById('h2h-a')?.value;
+  b = b ?? document.getElementById('h2h-b')?.value;
   if(!a||!b||a===b){toast('異なる2チームを選んでください', true);return;}
   let wA=0,wB=0,draws=0,gfA=0,gfB=0;const hist=[];
   Object.entries(db.seasons).sort((x,y)=>parseInt(y[0])-parseInt(x[0])).forEach(([yr,s])=>{
@@ -2731,7 +2748,7 @@ function showH2H(){
     });
     html+=`</div>`;
   }
-  document.getElementById('h2h-area').innerHTML=html;
+  document.getElementById(targetId||'h2h-area').innerHTML=html;
 }
 
 // ══════════════════════════════════
@@ -2744,22 +2761,20 @@ function switchHistTab(tab, el){
     el.classList.add('active');
   }
   histTab=tab;
-  if(tab==='alltime')renderHistAlltime();
-  else if(tab==='titles')renderTitlesRanking();
+  if(tab==='titles')renderTitlesRanking();
   else if(tab==='streaks')renderStreaksRanking();
   else if(tab==='upsets')renderUpsetsRanking();
   else if(tab==='profile')renderTeamProfile();
   else if(tab==='trend')renderHistTrend();
   else if(tab==='snapshot')renderRatingSnapshots();
-  else if(tab==='h2h')renderH2HInHistory();
   else if(tab==='club')renderClubParams();
   else if(tab==='stylean')renderStyleAnalysis();
   else renderHistInseason();
 }
 
 // 記録タブのカテゴリ切替（📚記録 / 📈推移 / 🔍分析）：該当カテゴリのサブタブ行を表示し、その先頭タブを開く
-const HIST_CATEGORY = ['records','analysis'];
-const HIST_CATEGORY_DEFAULT_TAB = { records:'alltime', analysis:'profile' };
+const HIST_CATEGORY = ['records','analysis','team'];
+const HIST_CATEGORY_DEFAULT_TAB = { records:'inseason', analysis:'upsets', team:'profile' };
 function switchHistCategory(cat){
   HIST_CATEGORY.forEach(c=>{
     document.getElementById(`hcat-tab-${c}`).classList.toggle('active', c===cat);
@@ -2773,8 +2788,8 @@ function switchHistCategory(cat){
 }
 
 // 記録タブへの遷移時、現在のhistTabに対応するカテゴリ・サブタブの表示状態を正しく復元する
-const HIST_TAB_CATEGORY = { alltime:'records', titles:'records', streaks:'records', upsets:'records',
-  trend:'records', inseason:'records', profile:'analysis', h2h:'analysis', snapshot:'analysis', club:'analysis', stylean:'analysis' };
+const HIST_TAB_CATEGORY = { inseason:'records', trend:'records', titles:'records', streaks:'records',
+  upsets:'analysis', snapshot:'analysis', club:'analysis', stylean:'analysis', profile:'team' };
 function restoreHistoryView(){
   const cat = HIST_TAB_CATEGORY[histTab] || 'records';
   HIST_CATEGORY.forEach(c=>{
@@ -2788,58 +2803,6 @@ function restoreHistoryView(){
     t.classList.toggle('active', match && match[1]===histTab);
   });
   switchHistTab(histTab); // 内容を再描画（elなしなのでタブのactive状態は変更されない）
-}
-
-// 記録タブ内「対戦」サブタブ：チーム選択UI＋結果表示（旧pg-h2hページの内容をここに統合）
-function renderH2HInHistory(){
-  const el = document.getElementById('history-area');
-  const teams = Object.keys(db.teams).filter(t=>db.teams[t].active);
-  const opts = teams.map(t=>`<option value="${t}">${t}</option>`).join('');
-  el.innerHTML = `
-    <div style="display:flex;gap:6px;align-items:center;padding:10px 12px;">
-      <select id="h2h-a" style="flex:1;font-size:13px;padding:6px 8px;">${opts}</select>
-      <span style="color:var(--muted);font-weight:700;font-size:13px;">VS</span>
-      <select id="h2h-b" style="flex:1;font-size:13px;padding:6px 8px;">${opts}</select>
-      <button class="btn btn-g btn-sm" onclick="showH2H()">検索</button>
-    </div>
-    <div id="h2h-area"></div>`;
-  if(teams.length>1){
-    document.getElementById('h2h-b').selectedIndex = 1;
-    showH2H();
-  }
-}
-
-function renderHistAlltime(){
-  const seasons=getSeasons();
-  let html='';
-  if(!seasons.length){
-    html='<div class="loading">データなし<br><span style="font-size:11px;">設定タブから過去データを読み込めます</span></div>';
-    document.getElementById('history-area').innerHTML=html; return;
-  }
-
-  // ── 優勝回数（部門別） ──
-  [1,2,3].forEach(div=>{
-    const color=DIV_COLOR[div];
-    const wins={};
-    seasons.forEach(yr=>{
-      const r=getStandings(yr,div);
-      if(r[0]) wins[r[0].team]=(wins[r[0].team]||0)+1;
-    });
-    const ranked=Object.entries(wins).sort((a,b)=>b[1]-a[1]);
-    if(!ranked.length) return;
-    html+=`<div class="slbl" style="color:${color};">優勝回数（${getDivName(div)}）</div><div class="card">`;
-    ranked.slice(0,8).forEach(([team,cnt],i)=>{
-      const rc=i===0?'var(--gold)':i===1?'#90a4ae':i===2?'#ff8a65':'var(--muted)';
-      html+=`<div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid var(--divider);">
-        <span style="font-size:15px;font-weight:700;color:${rc};width:26px;">${i+1}</span>
-        <span style="flex:1;font-size:13px;font-weight:700;">${team}</span>
-        <span style="font-size:13px;color:${color};font-weight:700;">${cnt}回</span>
-      </div>`;
-    });
-    html+=`</div>`;
-  });
-
-  document.getElementById('history-area').innerHTML=html;
 }
 
 // ══ 通算タイトル数（リーグ優勝＋カップ優勝＋PO優勝を合算） ══
@@ -2914,7 +2877,32 @@ function renderTitlesRanking(){
     html += `</tbody></table>`;
   }
   html += `</div>`;
+  html += championsByYearHtml();
   document.getElementById('history-area').innerHTML = html;
+}
+
+// 年度ごとの優勝チーム（リーグ各部門・カップ・PO）
+function championsByYearHtml(){
+  const seasons = getSeasons().slice().sort((a,b)=>parseInt(b)-parseInt(a));
+  if(!seasons.length) return '';
+  const divs = [1,2,3].filter(dv=>seasons.some(y=>getDivData(y,dv)?.matches?.length));
+  const cupSlots = [1,2].filter(sl=>seasons.some(y=>getCup(y,sl)?.winner));
+  let html = `<div class="slbl">歴代の優勝チーム</div><div class="card"><div class="tbl-scroll"><table class="stbl champ-tbl"><thead><tr><th class="tl">年度</th>`;
+  html += divs.map(dv=>`<th style="color:${divColor(dv)};">${escHtml(getDivName(dv))}</th>`).join('');
+  html += cupSlots.map(sl=>`<th>${escHtml(getCupName(sl))}</th>`).join('') + `</tr></thead><tbody>`;
+  seasons.forEach(yr=>{
+    html += `<tr><td class="tl">${escHtml(getSeasonLabel(yr))}</td>`;
+    divs.forEach(dv=>{
+      const d = getDivData(yr, dv);
+      if(!d?.matches?.length){ html += `<td>—</td>`; return; }
+      const done = d.matches.every(m=>m.played);
+      const top = getStandings(yr, dv)[0];
+      html += `<td>${done && top ? `<b>${escHtml(top.team)}</b>` : top ? `<span style="color:var(--muted);">${escHtml(top.team)}<small>(首位)</small></span>` : '—'}${d.playoff?.winner?`<small>PO ${escHtml(d.playoff.winner)}</small>`:''}</td>`;
+    });
+    cupSlots.forEach(sl=>{ const w = getCup(yr, sl)?.winner; html += `<td>${w?escHtml(w):'—'}</td>`; });
+    html += `</tr>`;
+  });
+  return html + `</tbody></table></div></div><p class="note-sm">※ 全日程が終わっていないシーズンは、いまの首位を薄く表示しています。</p>`;
 }
 
 // ══ 最長連勝・連敗記録 ══
@@ -3505,15 +3493,22 @@ const STREAK_KINDS = [
   { key:'unbeaten', label:'最長負けなし', unit:'試合負けなし', color:'var(--g)',     test:r=>r!=='L' },
   { key:'winless',  label:'最長勝ちなし', unit:'試合勝ちなし', color:'var(--red)',   test:r=>r!=='W' },
 ];
-function computeTeamStreaks(team){
+// チームのリーグ戦を時系列で返す（onlyDiv：0＝全部門、1〜3＝その部門だけ）
+function teamLeagueGames(team, onlyDiv=0){
   const games = [];
   getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
+    if(onlyDiv && div!==onlyDiv) return;
     const d = getDivData(yr, div);
     (d?.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)).forEach(m=>{
-      games.push({ yr, div, cround:getContinuousRound(d.matches, m.leg, m.round), order:m.playedAt??0, res:resultFor(m, team).res });
+      const r = resultFor(m, team);
+      games.push({ yr, div, cround:getContinuousRound(d.matches, m.leg, m.round), order:m.playedAt??0,
+        res:r.res, pts:r.pts, gf:r.gf, ga:r.ga, home:r.isHome, opp:r.isHome?m.away:m.home });
     });
   }));
-  games.sort((a,b)=>a.order-b.order);
+  return games.sort((a,b)=>a.order-b.order);
+}
+function computeTeamStreaks(team, onlyDiv=0){
+  const games = teamLeagueGames(team, onlyDiv);
   const out = {};
   STREAK_KINDS.forEach(k=>{
     let best = {len:0}, cur = {len:0};
@@ -3525,14 +3520,14 @@ function computeTeamStreaks(team){
   });
   return {games:games.length, ...out};
 }
-function teamStreaksHtml(team){
-  const st = computeTeamStreaks(team);
+function teamStreaksHtml(team, onlyDiv=0){
+  const st = computeTeamStreaks(team, onlyDiv);
   if(!st.games) return '';
   const at = g => `${getSeasonLabel(g.yr)} 第${g.cround}節`;
   const span = b => b.start===b.end ? at(b.start)
     : b.start.yr===b.end.yr ? `${getSeasonLabel(b.start.yr)} 第${b.start.cround}〜${b.end.cround}節`
     : `${at(b.start)}〜${at(b.end)}`;
-  let html = `<div class="slbl">連続記録（リーグ戦）</div><div class="card">`;
+  let html = `<div class="slbl">連続記録</div><div class="card">`;
   STREAK_KINDS.forEach(k=>{
     const s = st[k.key];
     html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
@@ -3546,6 +3541,90 @@ function teamStreaksHtml(team){
   });
   html += `</div>`;
   return html;
+}
+
+// 1試合記録（最大得点・最大失点・最大点差の勝利／敗北）
+function teamGameRecordsHtml(team, games){
+  if(!games.length) return '';
+  const pick = (list, better) => list.reduce((b,g)=>!b||better(g,b)?g:b, null);
+  const recs = [
+    ['最大得点', 'var(--g)', pick(games,(a,b)=>a.gf>b.gf), g=>`${g.gf}点`],
+    ['最大失点', 'var(--red)', pick(games,(a,b)=>a.ga>b.ga), g=>`${g.ga}点`],
+    ['最大点差勝利', 'var(--g)', pick(games.filter(g=>g.gf>g.ga),(a,b)=>a.gf-a.ga>b.gf-b.ga), g=>`+${g.gf-g.ga}`],
+    ['最大点差敗北', 'var(--red)', pick(games.filter(g=>g.gf<g.ga),(a,b)=>a.ga-a.gf>b.ga-b.gf), g=>`-${g.ga-g.gf}`],
+  ];
+  let html = `<div class="slbl">1試合記録</div><div class="card">`;
+  recs.forEach(([label,color,g,head])=>{
+    if(!g) return;
+    const vs = g.home ? `${team} ${g.gf}-${g.ga} ${g.opp}` : `${g.opp} ${g.ga}-${g.gf} ${team}`;
+    html += `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
+      <span style="font-size:11px;color:var(--muted);flex:0 0 72px;">${label}</span>
+      <span style="font-size:16px;font-weight:700;color:${color};flex:0 0 auto;">${head(g)}</span>
+      <span style="font-size:12px;flex:1;text-align:right;">${escHtml(vs)}<br><span style="color:var(--muted);font-size:10px;">${getSeasonLabel(g.yr)}・${getDivName(g.div)} 第${g.cround}節</span></span>
+    </div>`;
+  });
+  return html + `</div>`;
+}
+// 得意チーム・苦手チーム：相手ごとの1試合あたり勝点で並べる（3試合以上対戦した相手が対象）
+const MATCHUP_MIN_GAMES = 3;
+function teamMatchupHtml(team, games){
+  const by = {};
+  games.forEach(g=>{ const o = by[g.opp]||(by[g.opp]={opp:g.opp,n:0,w:0,d:0,l:0,pts:0,gd:0});
+    o.n++; o.pts+=g.pts; o.gd+=g.gf-g.ga; o[g.res==='W'?'w':g.res==='L'?'l':'d']++; });
+  const list = Object.values(by).filter(o=>o.n>=MATCHUP_MIN_GAMES).map(o=>({...o, ppg:o.pts/o.n}));
+  let html = `<div class="slbl">得意チーム・苦手チーム</div><div class="card">`;
+  if(list.length<2){
+    return html + `<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted);">${MATCHUP_MIN_GAMES}試合以上対戦した相手がまだ少ないため表示できません</div></div>`;
+  }
+  const good = list.slice().sort((a,b)=>b.ppg-a.ppg||b.gd-a.gd).slice(0,3);
+  const bad = list.slice().sort((a,b)=>a.ppg-b.ppg||a.gd-b.gd).filter(o=>!good.includes(o)).slice(0,3);
+  const row = (o, cls) => `<button class="mu-row ${cls}" onclick="openProfileH2H('${escHtml(o.opp).replace(/'/g,"\\'")}')">
+      <span class="mu-t">${escHtml(o.opp)}</span>
+      <span class="mu-r">${o.w}勝${o.d}分${o.l}敗</span>
+      <span class="mu-p">${o.ppg.toFixed(2)}<small>勝点/試合</small></span></button>`;
+  html += `<div class="mu-head good">得意</div>${good.map(o=>row(o,'good')).join('')}`;
+  if(bad.length) html += `<div class="mu-head bad">苦手</div>${bad.map(o=>row(o,'bad')).join('')}`;
+  return html + `<p class="sa-note" style="padding:0 13px 10px;margin:0;">リーグ戦で${MATCHUP_MIN_GAMES}試合以上対戦した相手が対象。タップすると下の対戦成績に切り替わります。</p></div>`;
+}
+// 部門ごとに切り替えられる記録（得意・苦手／連続記録／1試合記録）
+let profileRecDiv = 0;
+function renderProfileRecs(team){
+  const el = document.getElementById('profile-recs');
+  if(!el) return;
+  const divs = [1,2,3].filter(dv=>teamLeagueGames(team, dv).length);
+  if(profileRecDiv && !divs.includes(profileRecDiv)) profileRecDiv = 0;
+  const games = teamLeagueGames(team, profileRecDiv);
+  let html = '';
+  if(divs.length>1){
+    html += `<div class="tabs" style="padding:12px 0 0;">${[0,...divs].map(dv=>
+      `<div class="tab ${profileRecDiv===dv?'active':''}" onclick="profileRecDiv=${dv};renderProfileRecs(document.getElementById('profile-team').value)" style="${profileRecDiv===dv&&dv?`--tab-bg:var(--d${dv});`:''}">${dv?escHtml(getDivName(dv)):'全部門'}</div>`).join('')}</div>`;
+  }
+  html += teamMatchupHtml(team, games) + teamStreaksHtml(team, profileRecDiv) + teamGameRecordsHtml(team, games);
+  el.innerHTML = html;
+}
+// 対戦成績（チーム詳細の中で相手を選ぶ）
+function showProfileH2H(){
+  const team = document.getElementById('profile-team')?.value, opp = document.getElementById('profile-h2h-opp')?.value;
+  if(team && opp) showH2H(team, opp, 'profile-h2h');
+}
+function openProfileH2H(opp){
+  const sel = document.getElementById('profile-h2h-opp');
+  if(!sel) return;
+  sel.value = opp; showProfileH2H();
+  document.getElementById('profile-h2h-sec')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function profileH2HHtml(team){
+  const cnt = {};
+  teamLeagueGames(team).forEach(g=>cnt[g.opp]=(cnt[g.opp]||0)+1);
+  const others = Object.keys(db.teams).filter(t=>t!==team && (db.teams[t].active || cnt[t]));
+  if(!others.length) return '';
+  others.sort((a,b)=>(cnt[b]||0)-(cnt[a]||0));
+  return `<div class="slbl" id="profile-h2h-sec">🆚 対戦成績</div>
+    <div style="display:flex;gap:8px;align-items:center;padding:0 12px 8px;">
+      <span style="font-size:13px;font-weight:700;white-space:nowrap;">${escHtml(team)}</span><span style="color:var(--muted);font-weight:700;font-size:12px;">VS</span>
+      <select id="profile-h2h-opp" style="flex:1;font-size:13px;padding:6px 8px;" onchange="showProfileH2H()" aria-label="対戦相手">
+        ${others.map(t=>`<option value="${escHtml(t)}">${escHtml(t)}${cnt[t]?`（${cnt[t]}試合）`:''}</option>`).join('')}</select>
+    </div><div id="profile-h2h"></div>`;
 }
 
 function renderTeamProfile(){
@@ -3570,9 +3649,6 @@ function showTeamProfile(){
   // 通算成績（全体＋部門別に集計）
   const blank = () => ({p:0,w:0,d:0,l:0,gf:0,ga:0});
   const stats = { all: blank(), 1: blank(), 2: blank(), 3: blank() };
-  // 1試合記録（最大得点・最大失点・最大点差勝利・最大点差敗北）
-  let recMaxGF=null, recMaxGA=null, recMaxWin=null, recMaxLoss=null;
-  const consider = (cand, cur, better) => (cur===null || better(cand,cur)) ? cand : cur;
   getSeasons().forEach(yr=>{
     [1,2,3].forEach(div=>{
       const dd = getDivData(yr, div);
@@ -3585,11 +3661,6 @@ function showTeamProfile(){
           s.p++; s.gf+=my; s.ga+=opp;
           if(my>opp) s.w++; else if(my<opp) s.l++; else s.d++;
         });
-        const rec = { yr, div, opponent: isHome?m.away:m.home, my, opp, home: isHome };
-        recMaxGF   = consider(rec, recMaxGF,   (a,b)=>a.my>b.my);
-        recMaxGA   = consider(rec, recMaxGA,   (a,b)=>a.opp>b.opp);
-        if(my>opp) recMaxWin  = consider(rec, recMaxWin,  (a,b)=>(a.my-a.opp)>(b.my-b.opp));
-        if(my<opp) recMaxLoss = consider(rec, recMaxLoss, (a,b)=>(b.my-b.opp)>(a.my-a.opp));
       });
     });
   });
@@ -3680,26 +3751,7 @@ function showTeamProfile(){
     </div>` : ''}
   </div></div>`;
 
-  if(recMaxGF){
-    const recRow = (rec, label, color, headline) => {
-      const vs = rec.home ? `${team} ${rec.my}-${rec.opp} ${rec.opponent}` : `${rec.opponent} ${rec.opp}-${rec.my} ${team}`;
-      return `<div style="display:flex;align-items:center;padding:8px 13px;border-bottom:1px solid var(--divider);gap:10px;">
-        <span style="font-size:11px;color:var(--muted);flex:0 0 72px;">${label}</span>
-        <span style="font-size:16px;font-weight:700;color:${color};flex:0 0 auto;">${headline}</span>
-        <span style="font-size:12px;flex:1;text-align:right;">
-          ${vs}<br><span style="color:var(--muted);font-size:10px;">${getSeasonLabel(rec.yr)}・${getDivName(rec.div)}</span>
-        </span>
-      </div>`;
-    };
-    html += `<div class="slbl">1試合記録</div><div class="card">`;
-    html += recRow(recMaxGF, '最大得点', 'var(--g)', `${recMaxGF.my}点`);
-    html += recRow(recMaxGA, '最大失点', 'var(--red)', `${recMaxGA.opp}点`);
-    if(recMaxWin)  html += recRow(recMaxWin,  '最大点差勝利', 'var(--g)',  `+${recMaxWin.my-recMaxWin.opp}`);
-    if(recMaxLoss) html += recRow(recMaxLoss, '最大点差敗北', 'var(--red)', `-${recMaxLoss.opp-recMaxLoss.my}`);
-    html += `</div>`;
-  }
-
-  html += teamStreaksHtml(team);
+  html += `<div id="profile-recs"></div>` + profileH2HHtml(team);
 
   if(log.length){
     html += `<div class="slbl">昇降格履歴</div><div class="card">`;
@@ -3716,6 +3768,8 @@ function showTeamProfile(){
   }
 
   contentEl.innerHTML = html;
+  renderProfileRecs(team);
+  showProfileH2H();
 }
 
 let trendDivSel = new Set([1]); // 複数部門選択対応
@@ -5760,11 +5814,6 @@ function computeRankBounds(yr, div){
 }
 
 // 攻撃力・守備力ランキング（予測タブ「⚔️攻守力」サブタブ）
-let adFilterDiv = 0; // 0=全体, 1/2/3=部門別
-function switchAdDiv(div){
-  adFilterDiv = div;
-  renderAttackDefenseRanking();
-}
 
 function renderAttackDefenseRanking(){
   const el = document.getElementById('ad-area');
@@ -5772,23 +5821,14 @@ function renderAttackDefenseRanking(){
   if(!allRows.length){ el.innerHTML = '<div class="loading">データなし</div>'; return; }
 
 
-  const rows = adFilterDiv===0 ? allRows : allRows.filter(r=>r.curDiv===adFilterDiv);
+  const div = curDiv.predict;
+  const rows = allRows.filter(r=>r.curDiv===div);
   const byAttack = [...rows].sort((a,b)=>b.attack-a.attack);
   const byDefense = [...rows].sort((a,b)=>a.defense-b.defense); // 守備は数値が低いほど堅い
 
-  let html = `<div class="tabs" style="padding:0 12px 8px;">
-    <div class="tab ${adFilterDiv===0?'active':''}" onclick="switchAdDiv(0)">全体</div>
-    <div class="tab ${adFilterDiv===1?'active':''}" onclick="switchAdDiv(1)" style="${adFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${adFilterDiv===2?'active':''}" onclick="switchAdDiv(2)" style="${adFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${adFilterDiv===3?'active':''}" onclick="switchAdDiv(3)" style="${adFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
-  </div>`;
-
-  html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
-    ポアソン予測モデルで使っている攻撃力・守備力の指標です。<strong>その部門の平均を1.00</strong>として算出しており、
-    大きいほど攻撃力が高く、守備力は<strong>小さいほど堅い</strong>ことを表します。<br>
-    ${adFilterDiv===0
-      ? '※ 部門ごとに基準が異なるため、「全体」表示では部門をまたいだ数値の比較はできません。部門を選ぶと同一基準で比較できます。'
-      : `※ ${getDivName(adFilterDiv)}内での相対的な強さを表しています。`}
+  let html = `<p style="font-size:11px;color:var(--muted);padding:8px 13px;line-height:1.6;">
+    ポアソン予測モデルで使っている攻撃力・守備力の指標です。<strong>${escHtml(getDivName(div))}の平均を1.00</strong>として算出しており、
+    大きいほど攻撃力が高く、守備力は<strong>小さいほど堅い</strong>ことを表します。部門は上のタブで切り替えます。
   </p>`;
 
   if(!rows.length){
@@ -5798,7 +5838,7 @@ function renderAttackDefenseRanking(){
 
   html += `<div class="slbl">攻撃力ランキング</div><div class="card">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>攻撃力</th><th>所属</th></tr></thead><tbody>`;
-  byAttack.slice(0,15).forEach((r,i)=>{
+  byAttack.forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
     const dColor = divColor(r.curDiv);
     html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
@@ -5809,7 +5849,7 @@ function renderAttackDefenseRanking(){
 
   html += `<div class="slbl">守備力ランキング（堅い順）</div><div class="card">`;
   html += `<table class="stbl"><thead><tr><th>#</th><th class="tl">チーム</th><th>守備力</th><th>所属</th></tr></thead><tbody>`;
-  byDefense.slice(0,15).forEach((r,i)=>{
+  byDefense.forEach((r,i)=>{
     const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
     const dColor = divColor(r.curDiv);
     html += `<tr><td><span class="rn ${rc}">${i+1}</span></td><td class="tl">${r.team}</td>
