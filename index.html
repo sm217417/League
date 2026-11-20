@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WINNER">
 <title>WINNER PRO</title>
-<!-- WINNER PRO v2.3.1（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
+<!-- WINNER PRO v2.4.0（更新履歴は script 冒頭の APP_CHANGELOG と、設定タブ下の「バージョン情報」） -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html{font-size:14px;-webkit-tap-highlight-color:transparent;}
@@ -20,7 +20,7 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
   --text:#1a2333;
   --border:#dde3ed;--muted:#6b7c93;
   --divider:#f0f2f5;
-  --d1:#e53935;--d2:#00a854;--d3:#0288d1;
+  --d1:#e53935;--d2:#00a854;--d3:#0288d1;--d4:#8e24aa;
   --shadow-sm:0 1px 3px rgba(26,35,51,.06),0 1px 2px rgba(26,35,51,.04);
   --shadow-md:0 2px 8px rgba(26,35,51,.08),0 1px 3px rgba(26,35,51,.05);
   /* 表彰台（1〜3位）の色味 */
@@ -39,7 +39,7 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
     --text:#e8edf7;
     --border:#33415f;--muted:#9aabc7;
     --divider:#28354f;
-    --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;
+    --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;--d4:#ba68c8;
     --shadow-sm:0 1px 3px rgba(0,0,0,.35);
     --shadow-md:0 2px 8px rgba(0,0,0,.4);
     --podium1:#3a3116;--podium2:#2a3652;--podium3:#3a2a18;
@@ -56,7 +56,7 @@ body{font-family:"Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:
   --text:#e8edf7;
   --border:#33415f;--muted:#9aabc7;
   --divider:#28354f;
-  --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;
+  --d1:#ef5350;--d2:#26c06b;--d3:#42a5f5;--d4:#ba68c8;
   --shadow-sm:0 1px 3px rgba(0,0,0,.35);
   --shadow-md:0 2px 8px rgba(0,0,0,.4);
   --podium1:#3a3116;--podium2:#2a3652;--podium3:#3a2a18;
@@ -653,7 +653,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
     <div class="card-body">
       <div class="field" style="margin-bottom:10px;">
         <label>編集する部門</label>
-        <select id="te-div" onchange="renderTeamEditor()">
+        <select id="te-div" data-div-select onchange="renderTeamEditor()">
           <option value="1">1部</option>
           <option value="2">2部</option>
           <option value="3">3部</option>
@@ -709,7 +709,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
           前年度が存在する場合、自動で昇降格を適用してから開始します。<br>
           <strong style="color:var(--g);">昇格</strong>：1〜2位＋プレーオフ優勝チーム（3チーム）<br>
           <strong style="color:var(--red);">降格</strong>：下位3チーム（18〜20位相当）<br>
-          1部は昇格なし、3部は降格なしです。
+          1部は昇格なし、いちばん下の部門は降格なしです。
         </p>
         <button class="btn btn-g btn-full" onclick="startNewSeason()">▶ この年度を開始する（自動昇降格を適用）</button>
         <div id="season-start-msg" style="font-size:12px;margin-top:8px;"></div>
@@ -718,7 +718,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
   </div>
 
   <div class="card">
-    <div class="card-hdr">リーグ名</div>
+    <div class="card-hdr">部門数・リーグ名</div>
     <div class="card-body" id="dname-area"></div>
   </div>
 
@@ -739,7 +739,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
         </div>
         <div class="field" style="margin:0;flex:1;">
           <label>部門</label>
-          <select id="pi-div">
+          <select id="pi-div" data-div-select>
             <option value="1">1部</option>
             <option value="2">2部</option>
             <option value="3">3部</option>
@@ -887,8 +887,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 
 <script>
 // ══ バージョン ══
 // 新しい版を出すたびに上げる（大きめの更新は真ん中、小さな修正は右端の数字）。履歴は新しい順。
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.4.0';
 const APP_CHANGELOG = [
+  { v:'2.4.0', date:'2026-11-20', notes:[
+    '4部リーグまで作れるように（設定 →「部門数・リーグ名」で3部制／4部制を切り替え）',
+    '昇降格・プレーオフ・予測・記録・カップ戦の抽選などを、部門数に合わせて動くように',
+  ]},
   { v:'2.3.1', date:'2026-11-15', notes:[
     '順位表に「直近5試合・ホーム・アウェイ・前半戦・後半戦」ごとの順位を追加',
     'チーム詳細の対戦成績：履歴は直近10試合を表示（「すべて表示」で全試合）',
@@ -1150,7 +1154,7 @@ function getStorageInfo(){
     };
   }catch(e){ return null; }
 }
-function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ"}, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{}, seasonMeta:{} }; }
+function init_db(){ return { seasons:{}, teams:{}, config:{ div_names:{1:"1部リーグ",2:"2部リーグ",3:"3部リーグ",4:"4部リーグ"}, numDivs:3, cup_names:{1:"天皇杯",2:"ルヴァンカップ"} }, cups:{}, _seq:1, promotionLog:[], ratingSnapshots:{}, seasonMeta:{} }; }
 
 // 既存データに「保存順（playedAt）」を後付けで割り振る一回限りのマイグレーション。
 // これまでの計算順（年度昇順→部門1→2→3→その年のカップ戦）をそのまま踏襲した連番を付与し、
@@ -1159,7 +1163,7 @@ function migrateAddPlayedAt(d){
   let seq = 1;
   const seasons = Object.keys(d.seasons||{}).sort((a,b)=>parseInt(a)-parseInt(b));
   seasons.forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const dd = d.seasons[yr]?.divisions?.[String(div)];
       if(!dd || !dd.matches) return;
       const ms = [...dd.matches].filter(m=>m.played).sort((a,b)=>a.leg-b.leg||a.round-b.round||a.id-b.id);
@@ -1192,6 +1196,8 @@ let leagueSubtab = 'matches'; // 'matches' | 'po'
 // ══ 初期化 ══
 function init(){
   const yr = new Date().getFullYear();
+  if(numDivs()<4 && hasDiv4Data()){ db.config.numDivs = 4; save(db); } // 読み込んだデータに4部があれば4部制にする
+  fillDivSelects();
   refreshSeasonSelects();
   buildDivTabs('dtabs-home', 1, d=>{ curDiv.home=d; loadStandings(); });
   buildDivTabs('dtabs-matches', 1, d=>{ curDiv.matches=d; curDiv.po=d; loadMatches(); renderPlayoff(); if(leagueSubtab==='forecast') renderNextRoundForecast(); });
@@ -1256,11 +1262,50 @@ function switchLeagueSubtab(tab){
   if(tab==='po') renderPlayoff();
 }
 
-// ══ 部門の色・略称（CSSの --d1〜--d3 と対応） ══
-const DIV_COLOR = {1:'var(--d1)', 2:'var(--d2)', 3:'var(--d3)'};
-const DIV_RGB   = {1:'229,57,53', 2:'0,168,84', 3:'2,136,209'}; // 透明度を変えて塗る場面（ヒートマップ）用
+// ══ 部門の数 ══
+// 3部制か4部制か（設定で切り替え）。部門をまたぐ処理は DIVS() と書かず DIVS() を使う
+const MAX_DIV = 4;
+const numDivs = () => Math.min(MAX_DIV, Math.max(3, db?.config?.numDivs||3));
+const DIVS = () => Array.from({length:numDivs()}, (_,i)=>i+1);
+const lastDiv = () => numDivs();   // いちばん下の部門（降格なし）
+// 4部のデータ（シーズン・チーム）があるか。あれば3部制には戻せない
+function hasDiv4Data(){
+  return Object.values(db.seasons||{}).some(se=>se?.divisions?.['4']) || Object.values(db.teams).some(t=>t.div===4);
+}
+function setNumDivs(n){
+  n = Number(n);
+  if(n===numDivs()) return;
+  if(n<4 && hasDiv4Data()){
+    alert(`${getDivName(4)}のチームや試合が残っているため、3部制に戻せません。\n先に${getDivName(4)}のチームを別の部門へ移すか削除してください。`);
+    buildDivNameForm(); return;
+  }
+  if(!confirm(n===4 ? `${getDivName(4)}を追加して4部制にします。` : '3部制に戻します。')) { buildDivNameForm(); return; }
+  db.config.numDivs = n;
+  if(!db.config.div_names[4]) db.config.div_names[4] = '4部リーグ';
+  save(db);
+  location.reload(); // 部門タブ・選択肢などを作り直すため読み込み直す
+}
+// 部門を選ぶ <select> の選択肢を、部門数に合わせて作る
+function fillDivSelects(){
+  document.querySelectorAll('select[data-div-select]').forEach(sel=>{
+    const keep = sel.value;
+    sel.innerHTML = DIVS().map(d=>`<option value="${d}">${escHtml(divShortName(d))}</option>`).join('');
+    sel.value = DIVS().includes(Number(keep)) ? keep : '1';
+  });
+}
+// 部門で絞り込むタブ（全体＋各部門）。cur＝選択中（0＝全体）、fn＝押したときに呼ぶ関数名
+function divFilterTabsHtml(cur, fn){
+  return `<div class="tabs" style="padding:0 12px 8px;">
+    <div class="tab ${cur===0?'active':''}" onclick="${fn}(0)">全体</div>
+    ${DIVS().map(d=>`<div class="tab ${cur===d?'active':''}" onclick="${fn}(${d})" style="${cur===d?`--tab-bg:var(--d${d});`:''}">${escHtml(getDivName(d))}</div>`).join('')}
+  </div>`;
+}
+
+// ══ 部門の色・略称（CSSの --d1〜--d4 と対応） ══
+const DIV_COLOR = {1:'var(--d1)', 2:'var(--d2)', 3:'var(--d3)', 4:'var(--d4)'};
+const DIV_RGB   = {1:'229,57,53', 2:'0,168,84', 3:'2,136,209', 4:'142,36,170'}; // 透明度を変えて塗る場面（ヒートマップ）用
 const divColor = d => DIV_COLOR[d] || 'var(--muted)';
-const divShortName = d => ({1:'1部', 2:'2部', 3:'3部'})[d] || '—';
+const divShortName = d => d ? `${d}部` : '—';
 // 部門色を薄く敷いたバッジの背景
 const divTint = d => `color-mix(in srgb, ${divColor(d)} 14%, transparent)`;
 // 折れ線グラフの右端に付けるチーム名：最長の名前が収まる右余白を返す（画面幅の4割まで）
@@ -1309,7 +1354,7 @@ const divTabHandlers = {};
 function buildDivTabs(id, active, cb){
   divTabHandlers[id] = cb;
   const dn = db.config.div_names;
-  document.getElementById(id).innerHTML = [1,2,3].map(d=>`
+  document.getElementById(id).innerHTML = DIVS().map(d=>`
     <div class="tab ${d===active?'active':''}" data-d="${d}" style="--tab-bg:${DIV_COLOR[d]};"
       onclick="selectDivTab('${id}', this, ${d})">
       ${dn[d]||d+'部'}
@@ -1554,7 +1599,7 @@ function loadStandings(){
   const rowMeta = (i) => {
     const isP = div!==1 && i<pN;
     const isPO = div!==1 && poEnabled && i>=pN && i<pN+poN;
-    const isR = div!==3 && n-i<=rN;
+    const isR = div!==lastDiv() && n-i<=rN;
     const zoneClass = isP?'row-p':isPO?'row-po':isR?'row-r':'';
     // 昇格/降格圏の色がない行に限り、1〜3位の表彰台配色を適用する（色の競合を避ける）
     const podiumClass = (!zoneClass && i<3) ? `podium-${i+1}` : '';
@@ -2062,7 +2107,7 @@ const AUTO_RELEGATE_N = 3;  // 自動降格枠（下位3チーム）
 
 function computePromotionMoves(prevYr){
   const moves = [];
-  [1,2,3].forEach(div=>{
+  DIVS().forEach(div=>{
     const d = getDivData(prevYr, div);
     if(!d || !d.started) return;
     const rows = calcStandings(prevYr, div);
@@ -2087,7 +2132,7 @@ function computePromotionMoves(prevYr){
         }
       }
     }
-    if(div<3 && relegateN>0){
+    if(div<lastDiv() && relegateN>0){
       // 下位チーム自動降格
       rows.slice(Math.max(0, n-relegateN)).forEach(r=>{
         // 既に昇格対象になっている場合はスキップ（安全策）
@@ -2123,7 +2168,7 @@ function setScheduleMode(mode){
     desc.innerHTML = `前年度が存在する場合、自動で昇降格を適用してから開始します。<br>
       <strong style="color:var(--g);">昇格</strong>：1〜2位＋プレーオフ優勝チーム（3チーム）<br>
       <strong style="color:var(--red);">降格</strong>：下位3チーム（18〜20位相当）<br>
-      1部は昇格なし、3部は降格なしです。<br><br>
+      1部は昇格なし、${escHtml(getDivName(lastDiv()))}は降格なしです。<br><br>
       各部門の登録済みチームで総当たり日程を自動生成します。`;
     if(btn) btn.textContent = '▶ この年度を開始する（自動昇降格を適用）';
   } else {
@@ -2168,12 +2213,12 @@ function startNewSeason(){
   }
 
   // 開始予定の部門とチーム数をプレビュー
-  const preview = [1,2,3].map(div=>{
+  const preview = DIVS().map(div=>{
     const teams = Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
     return {div, count: teams.length};
   });
   confirmMsg += joint
-    ? `${getDivName(1)}: ${preview[0].count}チーム\n${getDivName(2)}・${getDivName(3)}合同: ${preview[1].count+preview[2].count}チーム`
+    ? [`${getDivName(1)}: ${preview[0].count}チーム`, `${getDivName(2)}・${getDivName(3)}合同: ${preview[1].count+preview[2].count}チーム`, ...preview.slice(3).map(p=>`${getDivName(p.div)}: ${p.count}チーム`)].join('\n')
     : preview.map(p=>`${getDivName(p.div)}: ${p.count}チーム`).join('\n');
   if(scheduleMode==='manual'){
     confirmMsg += `\n\n※手動日程モード：試合は空の状態で開始します。`;
@@ -2213,7 +2258,7 @@ function startNewSeason(){
   const orderTeamsByPrevSeason = (teamList, div)=>{
     const prevInfo = {}; // team -> {div, rank}
     if(db.seasons[prevYr]){
-      [1,2,3].forEach(pd=>{
+      DIVS().forEach(pd=>{
         const pdata = getDivData(prevYr, pd);
         if(!pdata) return;
         calcStandings(prevYr, pd).forEach(r=>{ prevInfo[r.team] = {div:pd, rank:r.rank}; });
@@ -2232,7 +2277,7 @@ function startNewSeason(){
   const started = [];
   const skipped = [];
   const activeOf = div => Object.entries(db.teams).filter(([_,t])=>t.active&&t.div===div).map(([n])=>n);
-  [1,2,3].forEach(div=>{
+  DIVS().forEach(div=>{
     if(joint && div===3) return; // 3部は2部の合同リーグに含める
     // 合同リーグ：2部のチーム（前年度順）→3部のチーム（前年度順）の順に並べる
     const teams = (joint && div===2)
@@ -2278,8 +2323,12 @@ function startNewSeason(){
 }
 
 function buildDivNameForm(){
-  let html='';
-  [1,2,3].forEach(div=>{
+  let html=`<div class="field"><label for="num-divs">部門数</label>
+    <select id="num-divs" onchange="setNumDivs(this.value)">
+      <option value="3" ${numDivs()===3?'selected':''}>3部制（1部〜3部）</option>
+      <option value="4" ${numDivs()===4?'selected':''}>4部制（1部〜4部）</option>
+    </select></div>`;
+  DIVS().forEach(div=>{
     html+=`<div class="field"><label>第${div}部</label>
       <div class="row">
         <input type="text" id="dn-${div}" value="${getDivName(div)}">
@@ -2547,7 +2596,7 @@ function exportMatchesCSV(){
   const rows = [['year','division','matchday','home_team','away_team','home_goals','away_goals']];
 
   getSeasons().slice().sort((a,b)=>parseInt(a)-parseInt(b)).forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).sort((a,b)=>a.leg-b.leg||a.round-b.round||a.id-b.id).forEach(m=>{
@@ -2678,7 +2727,7 @@ function purgeSeasonExtras(yr){
 // チームの所属部門を、指定シーズンでの所属に合わせる（そのシーズンにいないチームは変更しない）
 function syncTeamDivsToSeason(yr){
   if(!yr) return;
-  [1,2,3].forEach(div=>{
+  DIVS().forEach(div=>{
     (getDivData(yr, div)?.teams||[]).forEach(t=>{ if(db.teams[t]) db.teams[t].div = div; });
   });
 }
@@ -2689,7 +2738,7 @@ function deleteSeason(){
   if(!yr){ msg.style.color='var(--red)'; msg.textContent='削除するシーズンを選択してください'; return; }
 
   const divisions = db.seasons[yr]?.divisions || {};
-  const summary = [1,2,3].map(d=>{
+  const summary = DIVS().map(d=>{
     const dd = divisions[String(d)];
     if(!dd) return null;
     const teamCount = dd.teams?.length || 0;
@@ -2882,7 +2931,7 @@ function renderTitlesRanking(){
     titles[team].total++;
   };
 
-  const targetDivs = titlesFilterDiv===0 ? [1,2,3] : [titlesFilterDiv];
+  const targetDivs = titlesFilterDiv===0 ? DIVS() : [titlesFilterDiv];
 
   // リーグ優勝（各年度・対象部門の1位）
   seasons.forEach(yr=>{
@@ -2911,14 +2960,8 @@ function renderTitlesRanking(){
   });
 
   const ranked = Object.entries(titles).sort((a,b)=>b[1].total-a[1].total);
-  const divColors = {0:'var(--muted)',1:'var(--d1)',2:'var(--d2)',3:'var(--d3)'};
 
-  let html = `<div class="tabs" style="padding:0 12px 8px;">
-    <div class="tab ${titlesFilterDiv===0?'active':''}" onclick="switchTitlesDiv(0)">全体</div>
-    <div class="tab ${titlesFilterDiv===1?'active':''}" onclick="switchTitlesDiv(1)" style="${titlesFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${titlesFilterDiv===2?'active':''}" onclick="switchTitlesDiv(2)" style="${titlesFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${titlesFilterDiv===3?'active':''}" onclick="switchTitlesDiv(3)" style="${titlesFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
-  </div>`;
+  let html = divFilterTabsHtml(titlesFilterDiv, 'switchTitlesDiv');
   html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
     ${titlesFilterDiv===0
       ? 'リーグ優勝・カップ優勝・昇格プレーオフ優勝を合算した「通算タイトル数」ランキングです。'
@@ -2946,7 +2989,7 @@ function renderTitlesRanking(){
 function championsByYearHtml(){
   const seasons = getSeasons().slice().sort((a,b)=>parseInt(b)-parseInt(a));
   if(!seasons.length) return '';
-  const divs = [1,2,3].filter(dv=>seasons.some(y=>getDivData(y,dv)?.matches?.length));
+  const divs = DIVS().filter(dv=>seasons.some(y=>getDivData(y,dv)?.matches?.length));
   const cupSlots = [1,2].filter(sl=>seasons.some(y=>getCup(y,sl)?.winner));
   let html = `<div class="slbl">歴代の優勝チーム</div><div class="card"><div class="tbl-scroll"><table class="stbl champ-tbl"><thead><tr><th class="tl">年度</th>`;
   html += divs.map(dv=>`<th style="color:${divColor(dv)};">${escHtml(getDivName(dv))}</th>`).join('');
@@ -2978,7 +3021,7 @@ function renderStreaksRanking(){
   // 部門を絞った場合は、その部門の試合だけを時系列に繋げて連勝/連敗を判定する
   const events = [];
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       if(streaksFilterDiv!==0 && div!==streaksFilterDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
@@ -3012,12 +3055,7 @@ function renderStreaksRanking(){
   bestWinStreaks.sort((a,b)=>b.streak-a.streak);
   bestLoseStreaks.sort((a,b)=>b.streak-a.streak);
 
-  let html = `<div class="tabs" style="padding:0 12px 8px;">
-    <div class="tab ${streaksFilterDiv===0?'active':''}" onclick="switchStreaksDiv(0)">全体</div>
-    <div class="tab ${streaksFilterDiv===1?'active':''}" onclick="switchStreaksDiv(1)" style="${streaksFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
-    <div class="tab ${streaksFilterDiv===2?'active':''}" onclick="switchStreaksDiv(2)" style="${streaksFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
-    <div class="tab ${streaksFilterDiv===3?'active':''}" onclick="switchStreaksDiv(3)" style="${streaksFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
-  </div>`;
+  let html = divFilterTabsHtml(streaksFilterDiv, 'switchStreaksDiv');
 
   html += `<div class="slbl">最長連勝記録</div><div class="card">`;
   if(!bestWinStreaks.length){
@@ -3065,7 +3103,7 @@ function computeGiantKillings(){
 
   const events = [];
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -3134,12 +3172,7 @@ function renderUpsetsRanking(){
       ? allResults
       : allResults.filter(r=>r.isLeague && r.div===upsetsFilterDiv);
 
-    let html = `<div class="tabs" style="padding:0 12px 8px;">
-      <div class="tab ${upsetsFilterDiv===0?'active':''}" onclick="switchUpsetsDiv(0)">全体</div>
-      <div class="tab ${upsetsFilterDiv===1?'active':''}" onclick="switchUpsetsDiv(1)" style="${upsetsFilterDiv===1?'--tab-bg:var(--d1);':''}">${getDivName(1)}</div>
-      <div class="tab ${upsetsFilterDiv===2?'active':''}" onclick="switchUpsetsDiv(2)" style="${upsetsFilterDiv===2?'--tab-bg:var(--d2);':''}">${getDivName(2)}</div>
-      <div class="tab ${upsetsFilterDiv===3?'active':''}" onclick="switchUpsetsDiv(3)" style="${upsetsFilterDiv===3?'--tab-bg:var(--d3);':''}">${getDivName(3)}</div>
-    </div>`;
+    let html = divFilterTabsHtml(upsetsFilterDiv, 'switchUpsetsDiv');
     html += `<p style="font-size:11px;color:var(--muted);padding:0 13px 8px;line-height:1.6;">
       試合前のELOレーティングから見た「勝者側の勝率」が低いほど、番狂わせ度が高い試合です。${upsetsFilterDiv!==0?'（カップ戦は部門を横断するため「全体」でのみ表示されます）':''}
     </p>`;
@@ -3291,7 +3324,7 @@ function renderClubParams(){
   const cs = clubStyleData();
   if(!teams.includes(clubTeam)) clubTeam = teams[0];
   if(clubCompare && (!teams.includes(clubCompare) || clubCompare===clubTeam)) clubCompare = '';
-  const opt = (sel, includeNone) => (includeNone?'<option value="">比較しない</option>':'') + [1,2,3].map(d=>{
+  const opt = (sel, includeNone) => (includeNone?'<option value="">比較しない</option>':'') + DIVS().map(d=>{
     const ts = teams.filter(t=>db.teams[t].div===d); if(!ts.length) return '';
     return `<optgroup label="${getDivName(d)}">${ts.map(t=>`<option value="${escHtml(t)}" ${t===sel?'selected':''}>${escHtml(t)}</option>`).join('')}</optgroup>`; }).join('');
   const vals = cs.values[clubTeam]||{}, cmpVals = clubCompare ? (cs.values[clubCompare]||{}) : {};
@@ -3382,7 +3415,7 @@ function styleMatchesFor(season){
   const out = [];
   getSeasons().forEach(yr=>{
     if(season!=='all' && yr!==season) return;
-    [1,2,3].forEach(div=>{ (getDivData(yr,div)?.matches||[]).forEach(m=>{ if(m.played) out.push(m); }); });
+    DIVS().forEach(div=>{ (getDivData(yr,div)?.matches||[]).forEach(m=>{ if(m.played) out.push(m); }); });
   });
   return out;
 }
@@ -3557,7 +3590,7 @@ const STREAK_KINDS = [
 // チームのリーグ戦を時系列で返す（onlyDiv：0＝全部門、1〜3＝その部門だけ）
 function teamLeagueGames(team, onlyDiv=0){
   const games = [];
-  getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
+  getSeasons().forEach(yr=>DIVS().forEach(div=>{
     if(onlyDiv && div!==onlyDiv) return;
     const d = getDivData(yr, div);
     (d?.matches||[]).filter(m=>m.played && (m.home===team||m.away===team)).forEach(m=>{
@@ -3655,7 +3688,7 @@ let profileRecDiv = 0;
 function renderProfileRecs(team){
   const el = document.getElementById('profile-recs');
   if(!el) return;
-  const divs = [1,2,3].filter(dv=>teamLeagueGames(team, dv).length);
+  const divs = DIVS().filter(dv=>teamLeagueGames(team, dv).length);
   if(profileRecDiv && !divs.includes(profileRecDiv)) profileRecDiv = 0;
   const games = teamLeagueGames(team, profileRecDiv);
   let html = '';
@@ -3712,9 +3745,9 @@ function showTeamProfile(){
 
   // 通算成績（全体＋部門別に集計）
   const blank = () => ({p:0,w:0,d:0,l:0,gf:0,ga:0});
-  const stats = { all: blank(), 1: blank(), 2: blank(), 3: blank() };
+  const stats = { all: blank(), ...Object.fromEntries(DIVS().map(d=>[d, blank()])) };
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const dd = getDivData(yr, div);
       if(!dd || !dd.matches) return;
       dd.matches.filter(m=>m.played && (m.home===team||m.away===team)).forEach(m=>{
@@ -3732,9 +3765,9 @@ function showTeamProfile(){
 
   // タイトル数（全体＋部門別）
   let leagueTitles=0, cupTitles=0, poTitles=0;
-  const titlesByDiv = {1:{league:0,po:0}, 2:{league:0,po:0}, 3:{league:0,po:0}};
+  const titlesByDiv = Object.fromEntries(DIVS().map(d=>[d, {league:0,po:0}]));
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const rows = getStandings(yr, div);
       if(rows[0]?.team===team){ leagueTitles++; titlesByDiv[div].league++; }
       const dd = getDivData(yr, div);
@@ -3777,7 +3810,7 @@ function showTeamProfile(){
   </div></div>`;
 
   // 部門別の内訳（その部門で1試合でもプレーした場合のみ行を出す）
-  const playedDivs = [1,2,3].filter(dv=>stats[dv].p>0);
+  const playedDivs = DIVS().filter(dv=>stats[dv].p>0);
   if(playedDivs.length){
     html += `<div class="slbl">部門別の通算成績</div><div class="card"><div class="tbl-scroll">`;
     html += `<table class="stbl"><thead><tr><th class="tl">部門</th><th>試</th><th>勝</th><th>分</th><th>敗</th><th>得</th><th>失</th><th>差</th><th>勝率</th></tr></thead><tbody>`;
@@ -3846,7 +3879,7 @@ function renderHistTrend(){
   const bands = buildTrendBands(allSeasons);
 
   let html=`<div class="slbl">部門を選択（複数選択可・縦に連結表示）</div><div class="tabs" style="padding:0 12px 9px;">`;
-  [1,2,3].forEach(d=>{
+  DIVS().forEach(d=>{
     const on = trendDivSel.has(d);
     html+=`<div class="tab ${on?'active':''}" onclick="toggleTrendDiv(${d})">${getDivName(d)}</div>`;
   });
@@ -3928,7 +3961,7 @@ function setTrendSelection(mode){
 function buildTrendBands(allSeasons){
   const bands = [];
   let offset = 0;
-  [1,2,3].forEach(div=>{
+  DIVS().forEach(div=>{
     if(!trendDivSel.has(div)) return;
     let maxTeams = 0;
     allSeasons.forEach(yr=>{
@@ -4116,7 +4149,7 @@ function renderHistInseason(){
       ${seasons.map(y=>`<option value="${y}">${getSeasonLabel(y)}</option>`).join('')}
     </select>
     <select id="is-div" style="font-size:13px;padding:6px 8px;" onchange="reloadInseason()">
-      ${[1,2,3].map(d=>`<option value="${d}">${getDivName(d)}</option>`).join('')}
+      ${DIVS().map(d=>`<option value="${d}">${getDivName(d)}</option>`).join('')}
     </select>
   </div>
   <div class="tabs" style="padding:0 12px 8px;">
@@ -4463,26 +4496,25 @@ function createCup(yr, slot, size){
   const byeCount = bracketSize - size; // 不戦勝で埋める空き枠数
 
   // 部門ごとのプール（シード済みチームを除く）
-  const pools = {1:[],2:[],3:[]};
+  const pools = Object.fromEntries(DIVS().map(d=>[d,[]]));
   Object.entries(db.teams).forEach(([name,info])=>{
-    if(info.active && !seedSet.has(name)) pools[info.div].push(name);
+    if(info.active && !seedSet.has(name) && pools[info.div]) pools[info.div].push(name);
   });
 
-  // 均等割り当て（余りは1部→2部→3部の順に+1）
-  const base = Math.floor(remaining/3);
-  const extra = remaining%3;
-  const alloc = {1: base+(extra>0?1:0), 2: base+(extra>1?1:0), 3: base};
+  // 均等割り当て（余りは1部→2部→…の順に+1）
+  const nD = numDivs(), base = Math.floor(remaining/nD), extra = remaining%nD;
+  const alloc = Object.fromEntries(DIVS().map(d=>[d, base+(d<=extra?1:0)]));
 
   // プール不足時は他部門から補填
   let shortfall = 0;
-  [1,2,3].forEach(d=>{
+  DIVS().forEach(d=>{
     if(pools[d].length < alloc[d]){
       shortfall += alloc[d]-pools[d].length;
       alloc[d] = pools[d].length;
     }
   });
   if(shortfall>0){
-    for(const d of [1,2,3]){
+    for(const d of DIVS()){
       const capacity = pools[d].length - alloc[d];
       if(capacity<=0) continue;
       const take = Math.min(capacity, shortfall);
@@ -4496,7 +4528,7 @@ function createCup(yr, slot, size){
   }
 
   const unseeded = [];
-  [1,2,3].forEach(d=>{
+  DIVS().forEach(d=>{
     const picked = shuffleArr(pools[d]).slice(0, alloc[d]);
     picked.forEach(t=>unseeded.push({team:t, div:d, bye:false}));
   });
@@ -4524,11 +4556,11 @@ function createCup(yr, slot, size){
   // ── 部門ごとの「山」を作る ──
   // 各部門20チーム前後という構成のため、部門ごとに山を分けて
   // 「残りが多い山」→「次に多い別の山」から1チームずつ取れば、同部門対決はほぼ起きない。
-  const piles = {1:[], 2:[], 3:[]};
+  const piles = Object.fromEntries(DIVS().map(d=>[d,[]]));
   shuffleArr(unseeded).forEach(t=>{ if(piles[t.div]) piles[t.div].push(t); });
 
   // 残りが多い順に部門を並べる（同部門だけが最後に余るのを防ぐ）
-  const pilesBySize = ()=> [1,2,3].filter(d=>piles[d].length>0).sort((a,b)=>piles[b].length-piles[a].length);
+  const pilesBySize = ()=> DIVS().filter(d=>piles[d].length>0).sort((a,b)=>piles[b].length-piles[a].length);
 
   // 1チーム取り出す。avoidDivを指定した場合は、その部門以外を優先する。
   const takeOne = (avoidDiv)=>{
@@ -4782,7 +4814,7 @@ function renderCup(){
           <div id="cup-create-auto-${slot}">
             <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7;">
               現在のELOレーティング上位<strong>8チーム</strong>がシードとして自動配置されます。<br>
-              残り枠は<strong>1部・2部・3部からできるだけ均等に</strong>ランダム抽選します。<br>
+              残り枠は<strong>各部門からできるだけ均等に</strong>ランダム抽選します。<br>
               2の累乗でないチーム数を入力した場合、次の2の累乗まで<strong>不戦勝（BYE）</strong>で埋め、
               不戦勝は<strong>シード上位のチームから優先的に</strong>付与されます。
             </p>
@@ -5038,7 +5070,7 @@ const ELO_HOME_ADV_DEFAULT = 50; // データ不足時のフォールバック�
 function computeEmpiricalHomeAdvantage(){
   let hw=0, dr=0, aw=0;
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -5085,7 +5117,7 @@ function computeTeamHomeAdvantagesUncached(precomputedElo){
   // 時系列順（playedAt）に処理して、各チームのホーム時の上振れ具合を学習する
   const events = [];
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -5164,7 +5196,7 @@ function calcAllEloUncached(){
   const events = [];
   const seasons = getSeasons();
   seasons.forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
       d.matches.filter(m=>m.played).forEach(m=>{
@@ -5500,7 +5532,7 @@ function getPrevSeasonAttackDefense(yr, team){
     outer:
     for(let k=idx+1; k<seasons.length; k++){
       const pyr = seasons[k];
-      for(const pd of [1,2,3]){
+      for(const pd of DIVS()){
         const pdata = getDivData(pyr, pd);
         if(pdata && pdata.teams && pdata.teams.includes(team)){
           const ad = getRawAttackDefense(pyr, pd, team);
@@ -5576,7 +5608,7 @@ function getAttackDefense(yr, div, team, elo){
 function getLeagueAvgGoals(targetDiv){
   let totalGoals=0, totalTeamGames=0;
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       if(targetDiv && div!==targetDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
@@ -5596,7 +5628,7 @@ function getLeagueAvgGoals(targetDiv){
 function getLeagueAvgGoalsHomeAway(targetDiv){
   let homeGoals=0, awayGoals=0, games=0;
   getSeasons().forEach(yr=>{
-    [1,2,3].forEach(div=>{
+    DIVS().forEach(div=>{
       if(targetDiv && div!==targetDiv) return;
       const d = getDivData(yr, div);
       if(!d || !d.matches) return;
@@ -5675,7 +5707,7 @@ function predictStandings(yr, div, simulations=20000, opts){
     const fin = rows.map(r=>({...r, avgRank:r.rank, avgPts:r.pts, currentPts:r.pts, ptsLo:r.pts, ptsHi:r.pts, ptsQ:[r.pts,r.pts,r.pts,r.pts,r.pts],
       promoteProb: null,
       playoffProb: div>1 ? (r.rank <= AUTO_PROMOTE_N + (d.playoff?.playoffN||4) ? 100 : 0) : null,
-      relegateProb: div<3 ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null,
+      relegateProb: div<lastDiv() ? (r.rank > n-AUTO_RELEGATE_N ? 100 : 0) : null,
       winProb: div===1 ? (r.rank===1 ? 100 : 0) : null,
       best8Prob: div===1 ? (r.rank<=8 ? 100 : 0) : null,
       rankDist: Array.from({length:n}, (_,i)=> i+1===r.rank ? 100 : 0),
@@ -5778,7 +5810,7 @@ function predictStandings(yr, div, simulations=20000, opts){
   const n = teams.length;
   const pN = div>1 ? AUTO_PROMOTE_N : 0;
   const poRange = d.playoff?.enabled ? (d.playoff.playoffN||4) : 0;
-  const rN = div<3 ? AUTO_RELEGATE_N : 0;
+  const rN = div<lastDiv() ? AUTO_RELEGATE_N : 0;
 
   const result = teams.map(t=>{
     const counts = rankCounts[t];
@@ -5789,7 +5821,7 @@ function predictStandings(yr, div, simulations=20000, opts){
       const rank=i+1;
       if(div>1 && rank<=pN) promoteCount+=c;
       if(div>1 && rank<=pN+poRange) playoffCount+=c;  // 1〜6位（自動昇格枠含む）
-      if(div<3 && rank > n-rN) relegateCount+=c;
+      if(div<lastDiv() && rank > n-rN) relegateCount+=c;
       if(div===1 && rank===1) winCount+=c;
       if(div===1 && rank<=8) best8Count+=c;
     });
@@ -5798,7 +5830,7 @@ function predictStandings(yr, div, simulations=20000, opts){
       avgRank: Math.round(avgRank*10)/10,
       promoteProb: div>1 ? Math.round(promoteCount/simulations*100) : null,
       playoffProb: div>1 && poRange ? Math.round(playoffCount/simulations*100) : null,
-      relegateProb: div<3 ? Math.round(relegateCount/simulations*100) : null,
+      relegateProb: div<lastDiv() ? Math.round(relegateCount/simulations*100) : null,
       winProb: div===1 ? Math.round(winCount/simulations*100) : null,
       best8Prob: div===1 ? Math.round(best8Count/simulations*100) : null,
       currentPts: baseStats[t].pts,
@@ -5932,7 +5964,7 @@ function calibNoteHtml(){
     ? `※ 開幕時の見立ては、過去${c.n}件の完了済みシーズン（部門ごと）の結果で自動調整しています（強さ係数 ${c.k.toFixed(2)}、開幕時予想と実際の最終勝点の誤差 ±${c.rmse.toFixed(1)}点／調整前 ±${c.rmseBefore.toFixed(1)}点）。`
     : `※ 完了済みの過去シーズンがまだ足りないため、強さ係数は既定値（${c.k.toFixed(2)}）を使っています。前のシーズンがある年度が全日程を終えると自動で調整されます。`;
   const F = getDivFactors();
-  const parts = [1,2].filter(b=>getSeasons().some(y=>getDivData(y,b+1))).map(b=>
+  const parts = DIVS().slice(0,-1).filter(b=>getSeasons().some(y=>getDivData(y,b+1))).map(b=>
     `${getDivName(b+1)}→${getDivName(b)}：攻撃×${F[b].att.toFixed(2)}・失点×${F[b].def.toFixed(2)}${F[b].n?`（実績${F[b].n}件）`:'（目安値）'}`);
   if(parts.length) t += `<br>※ 昇格してきたチームの開幕時の攻守力は、${parts.join('、')}で補正しています（降格はその逆）。`;
   return t;
@@ -5945,7 +5977,7 @@ function raceDefs(yr, div, n){
   const d = getDivData(yr, div) || {};
   const pN = div>1 ? (d.promoteN!==undefined ? d.promoteN : AUTO_PROMOTE_N) : 0;
   const poN = (div>1 && pN>0 && d.playoff?.enabled) ? (d.playoff.playoffN||4) : 0;
-  const hasLower = div<3 && getSeasons().some(y=>getDivData(y, div+1));
+  const hasLower = div<lastDiv() && getSeasons().some(y=>getDivData(y, div+1));
   const rN = hasLower ? (d.relegateN!==undefined ? d.relegateN : AUTO_RELEGATE_N) : 0;
   const defs = [];
   if(div===1 || d.joint) defs.push({key:'title', label:'優勝争い', from:1, to:1, line:1, lineLabel:'優勝ライン'});
@@ -5956,7 +5988,7 @@ function raceDefs(yr, div, n){
   if(poN>0) defs.push({key:'playoff', label:'PO争い', from:1, to:pN+poN, line:pN+poN, lineLabel:'PO圏ライン'});
   if(rN>0 && rN<n) defs.push({key:'relegate', label:'降格争い', from:n-rN+1, to:n, line:n-rN, lineLabel:'残留ライン'});
   // 最下部（降格がない部門）は、最下位争いを出す
-  if(div===3 && !d.joint && n>2) defs.push({key:'last', label:'最下位争い', from:n, to:n, line:n-1, lineLabel:'最下位回避ライン'});
+  if(div===lastDiv() && !d.joint && n>2) defs.push({key:'last', label:'最下位争い', from:n, to:n, line:n-1, lineLabel:'最下位回避ライン'});
   return defs;
 }
 // 争いに絡むチームを選ぶ。
@@ -6396,7 +6428,7 @@ function findPrevDiv(yr, team){
   const idx = seasons.indexOf(String(yr));
   if(idx<0) return null;
   for(let k=idx+1;k<seasons.length;k++){
-    for(const pd of [1,2,3]){
+    for(const pd of DIVS()){
       if(getDivData(seasons[k], pd)?.teams?.includes(team)) return pd;
     }
   }
@@ -6411,12 +6443,12 @@ function getDivFactors(){
   const sig = playedSignature();
   if(_divFactors && _divFactorsSig===sig) return _divFactors;
   const seasons = getSeasons().slice().reverse(); // 古い順
-  const acc = {1:{la:0,ld:0,n:0}, 2:{la:0,ld:0,n:0}};
+  const acc = Object.fromEntries(Array.from({length:MAX_DIV-1},(_,i)=>[i+1,{la:0,ld:0,n:0}]));
   for(let i=1;i<seasons.length;i++){
     const P=seasons[i-1], N=seasons[i];
-    [1,2,3].forEach(dN=>{
+    DIVS().forEach(dN=>{
       (getDivData(N,dN)?.teams||[]).forEach(t=>{
-        const dP=[1,2,3].find(x=>getDivData(P,x)?.teams?.includes(t));
+        const dP=DIVS().find(x=>getDivData(P,x)?.teams?.includes(t));
         if(!dP || Math.abs(dP-dN)!==1) return;
         const a=getRawAttackDefense(P,dP,t), b=getRawAttackDefense(N,dN,t);
         if(!a||!b||a.games<10||b.games<10) return;
@@ -6429,7 +6461,7 @@ function getDivFactors(){
     });
   }
   const out={};
-  [1,2].forEach(bd=>{
+  Object.keys(acc).map(Number).forEach(bd=>{
     const x=acc[bd], n0=DIV_FACTOR_PRIOR_N;
     out[bd]={ att:Math.exp((x.la + n0*Math.log(DIV_FACTOR_PRIOR.att))/(x.n+n0)),
               def:Math.exp((x.ld + n0*Math.log(DIV_FACTOR_PRIOR.def))/(x.n+n0)), n:x.n };
@@ -6489,7 +6521,7 @@ function expectedPtsFromLambdas(info){
 // 調整に使うのは全日程を終えた部門だけなので、今季の結果を入力しても再計算しない
 function calibSignature(){
   const parts=[];
-  getSeasons().forEach(yr=>[1,2,3].forEach(div=>{
+  getSeasons().forEach(yr=>DIVS().forEach(div=>{
     if(!isDivFinished(yr,div)) return;
     let g=0; getDivData(yr,div).matches.forEach(m=>{ g+=m.home_score*7+m.away_score*3+m.round; });
     parts.push(`${yr}:${div}:${g}`);
@@ -6502,7 +6534,7 @@ function calibrateStrength(){
   if(db.predCalib && db.predCalib.sig===sig){ calib = db.predCalib; strengthK = calib.k; return calib; }
   const samples=[];
   const asc = getSeasons().slice().reverse();
-  asc.forEach((yr,i)=>{ if(i===0) return; [1,2,3].forEach(div=>{ if(isDivFinished(yr,div)) samples.push({yr,div,actual:Object.fromEntries(calcStandings(yr,div).map(r=>[r.team,r.pts]))}); }); });
+  asc.forEach((yr,i)=>{ if(i===0) return; DIVS().forEach(div=>{ if(isDivFinished(yr,div)) samples.push({yr,div,actual:Object.fromEntries(calcStandings(yr,div).map(r=>[r.team,r.pts]))}); }); });
   samples.splice(0, Math.max(0, samples.length-6)); // 直近6件（部門ごとのシーズン）に絞る
   if(!samples.length){ calib={sig,k:STRENGTH_K_DEFAULT,n:0}; strengthK=calib.k; return calib; }
 
